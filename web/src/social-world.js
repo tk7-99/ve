@@ -238,9 +238,16 @@ export async function handleSocialSubmit(event) {
       if (error) throw error;
       const ownMessage = { ...message, display_name: runtime.profile?.display_name || "أنا" };
       appendRoomMessage(ownMessage);
-      if (roomChannel) await roomChannel.send({ type: "broadcast", event: "room-chat", payload: ownMessage });
       form.reset();
       $('input[name="body"]', form)?.focus();
+      if (roomChannel) {
+        try {
+          await roomChannel.send({ type: "broadcast", event: "room-chat", payload: ownMessage });
+        } catch (broadcastError) {
+          console.warn("Room message saved but realtime delivery failed:", broadcastError);
+          notify("تم حفظ الرسالة، وقد تتأخر بالظهور عند بقية الأعضاء.");
+        }
+      }
       return true;
     }
   } finally {
@@ -481,9 +488,9 @@ async function renderRoomPage() {
   const room = activeRoom;
   const isHost = room.host_id === runtime.user.id;
   const participants = roomPresenceState();
-  const messagesResult = await runtime.supabase.from("dazza_room_messages").select("*").eq("room_id", room.id).order("created_at", { ascending: true }).limit(80);
+  const messagesResult = await runtime.supabase.from("dazza_room_messages").select("*").eq("room_id", room.id).order("created_at", { ascending: false }).limit(80);
   if (messagesResult.error) throw messagesResult.error;
-  const messages = messagesResult.data || [];
+  const messages = (messagesResult.data || []).reverse();
   const profiles = await loadProfiles(messages.map(item => item.user_id));
   const chatHTML = messages.map(item => {
     chatIds.add(item.id);
@@ -498,6 +505,8 @@ async function renderRoomPage() {
       : '<div class="social-game-stage"><span class="promo-kicker">DAZZA QUICK QUIZ</span><h2>تحدّي المعلومات السريع</h2><p>المضيف يبدأ سؤالاً، وكل شخص يختار إجابته من الخيارات.</p><div id="social-room-quiz"><p class="muted">بانتظار بداية الجولة.</p></div>' + (isHost ? '<button class="btn-primary" data-action="social-quiz-start">ابدأ سؤالاً جديداً</button>' : '<p class="muted">انتظر المضيف حتى يبدأ الجولة.</p>') + '</div>';
   runtime.showContent('<div class="social-room-page"><div class="social-room-toolbar"><button class="back-link" data-action="social-room-leave">← مغادرة الغرفة</button><span>' + kindLabel + '</span><button class="btn-secondary" data-action="social-room-copy">نسخ الرابط</button></div><div class="social-room-layout"><main class="social-room-main"><section class="social-room-title"><div><h1>' + esc(room.title) + '</h1><p><span id="social-room-count">' + participants.length + ' / ' + room.max_members + '</span> · ' + (isHost ? "أنت المضيف" : "عضو في الغرفة") + '</p></div><span class="social-live-label">مباشر</span></section>' + mainBody + '<section class="social-members-panel"><h3>الموجودون الآن</h3><div id="social-room-presence">' + participants.map(member => '<span class="social-presence-person"><i class="' + (member.voice ? "online" : "") + '"></i>' + esc(member.displayName || "عضو") + '</span>').join("") + '</div></section></main><aside class="social-room-chat"><div class="social-chat-head"><strong>محادثة الغرفة</strong><small>رسائل للأعضاء الموجودين</small></div><div id="social-room-chat-list" class="social-room-chat-list">' + (chatHTML || '<p class="muted">ابدأوا الحديث...</p>') + '</div><form id="social-room-chat-form" class="social-room-chat-form"><input name="body" maxlength="500" autocomplete="off" placeholder="اكتب رسالة..." required><button type="submit" aria-label="إرسال">إرسال</button></form></aside></div></div>');
   syncRoomPresence();
+  const chatList = $("#social-room-chat-list");
+  if (chatList) chatList.scrollTop = chatList.scrollHeight;
 }
 
 function roomMessageHTML(message) {
@@ -519,11 +528,12 @@ function appendRoomMessage(message) {
 
 async function loadRoomChat() {
   if (!activeRoom) return;
-  const { data, error } = await runtime.supabase.from("dazza_room_messages").select("*").eq("room_id", activeRoom.id).order("created_at", { ascending: true }).limit(80);
+  const { data, error } = await runtime.supabase.from("dazza_room_messages").select("*").eq("room_id", activeRoom.id).order("created_at", { ascending: false }).limit(80);
   if (error) throw error;
-  const ids = (data || []).map(item => item.user_id);
+  const messages = (data || []).reverse();
+  const ids = messages.map(item => item.user_id);
   const profiles = await loadProfiles(ids);
-  for (const item of data || []) {
+  for (const item of messages) {
     appendRoomMessage({ ...item, display_name: profiles[item.user_id]?.display_name || "عضو" });
   }
 }
