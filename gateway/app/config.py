@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import SecretStr, field_validator
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     database_url: str
@@ -13,9 +14,6 @@ class Settings(BaseSettings):
     password_secret: SecretStr
     resend_api_key: SecretStr = SecretStr("")
     resend_from: str = ""
-    twilio_account_sid: str = ""
-    twilio_auth_token: SecretStr = SecretStr("")
-    twilio_verify_service_sid: str = ""
 
     @field_validator("identity_secret", "password_secret", "registration_shared_secret")
     @classmethod
