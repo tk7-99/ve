@@ -227,11 +227,18 @@ async function enter(nextSession) {
   }
   const linkedRoom = new URLSearchParams(location.search).get("room");
   if (linkedRoom) {
-    await navigate("social");
-    await openSharedSocialRoom(linkedRoom);
-    const cleanUrl = new URL(location.href);
-    cleanUrl.searchParams.delete("room");
-    history.replaceState({}, "", cleanUrl.toString());
+    try {
+      await navigate("social");
+      await openSharedSocialRoom(linkedRoom);
+    } catch (error) {
+      console.warn("Shared room link unavailable:", error);
+      notice(error.message || "تعذر فتح رابط الغرفة.", "error");
+      await navigate("social");
+    } finally {
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete("room");
+      history.replaceState({}, "", cleanUrl.toString());
+    }
   }
 }
 async function boot() {
