@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import "./style.css";
+import { WORLD_PROJECTS } from "./world-catalog.js";
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const root = $("#root");
@@ -22,6 +23,8 @@ let feedPosts = [];
 let storyGroups = [];
 let liveChannel = null;
 let searchTerm = "";
+let worldCategory = "all";
+let worldSearchTerm = "";
 let busy = false;
 let activeGame = "hub";
 let gameState = null;
@@ -61,6 +64,14 @@ const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
 }[char]));
 const avatarUrl = path => path ? supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl : "";
+function safeProfileUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
 const publicUrl = path => path ? supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl : "";
 const initials = value => esc((value || "د").trim().slice(0, 1) || "د");
 const dateLabel = value => {
@@ -144,20 +155,20 @@ function shell() {
     ? '<img class="avatar-img" src="' + esc(avatar) + '" alt="">'
     : '<span>' + initials(profile?.display_name) + '</span>';
   root.innerHTML = '<div class="social-app"><aside class="left-sidebar"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span><b>دَزّة</b><small>YOUR WORLD. YOUR WAY.</small></span></a><nav class="main-nav">' +
+    '<div class="nav-section-label">المجتمع</div>' +
     navItem("feed", "⌂", "الرئيسية") +
     navItem("explore", "⌕", "استكشف") +
     navItem("reels", "▷", "ريلز") +
-    navItem("games", "✦", "مركز الألعاب") +
-    navItem("tools", "⌘", "الأدوات") +
     navItem("messages", "✉", "الرسائل") +
     navItem("notifications", "♡", "الإشعارات", '<i id="notification-badge" class="nav-badge" hidden></i>') +
     navItem("saved", "▣", "المحفوظات") +
+    '<div class="nav-section-label">مساحة دَزّة</div>' +
+    navItem("world", "✧", "العالم المفتوح") +
+    navItem("games", "✦", "مركز الألعاب") +
+    navItem("tools", "⌘", "الأدوات") +
     '<button class="nav-item create-nav" data-action="new-post"><span class="nav-icon">＋</span><span>إنشاء منشور</span></button>' +
-    navItem("settings", "⚙", "الإعدادات") +
-    '<button class="nav-item profile-nav" data-action="my-profile"><span class="nav-avatar">' + avatarHTML + '</span><span>الملف الشخصي</span></button>' +
-    '<button class="nav-item nav-logout" data-action="logout"><span class="nav-icon">↪</span><span>تسجيل الخروج</span></button>' +
-    '</nav><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span><button class="install-link" data-action="install-app">تثبيت التطبيق على جهازك ↗</button></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><div class="mobile-header-actions"><span id="network-status" class="network-pill" hidden>غير متصل</span><button class="icon-action" data-action="install-app" aria-label="تثبيت">⇩</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button><button class="icon-action account-trigger" data-action="account-menu" aria-label="الحساب">' + avatarHTML + '</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">اكتشف وجوهاً وأفكاراً جديدة.</div></div><section class="right-promo"><span class="promo-kicker">DAZZA ARCADE</span><strong>استراحة ذكية؟</strong><p>ألعاب خفيفة وتحديات قصيرة داخل التطبيق.</p><button class="btn-secondary" data-view="games">اكتشف الألعاب</button></section><div class="right-footer">مجتمع · ألعاب · أدوات · خصوصية<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
-    mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + mobileNav("games", "✦") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("notifications", "♡") + mobileNav("my-profile", "○") +
+    '</nav><div class="sidebar-account-wrap"><button class="sidebar-account" data-action="account-menu"><span class="sidebar-account-avatar">' + avatarHTML + '</span><span class="sidebar-account-copy"><strong>' + esc(profile?.display_name || "حسابي") + '</strong><small>الحساب والإعدادات</small></span><span class="sidebar-account-more">•••</span></button><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span><button class="install-link" data-action="install-app">تثبيت التطبيق على جهازك ↗</button></div></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><div class="mobile-header-actions"><span id="network-status" class="network-pill" hidden>غير متصل</span><button class="icon-action" data-action="install-app" aria-label="تثبيت">⇩</button><button class="icon-action" data-view="notifications" aria-label="الإشعارات">♡</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button><button class="icon-action account-trigger" data-action="account-menu" aria-label="الحساب">' + avatarHTML + '</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">اكتشف وجوهاً وأفكاراً جديدة.</div></div><section class="right-promo"><span class="promo-kicker">DAZZA WORLD</span><strong>عالمك في مكان واحد</strong><p>مجتمع ومشاريع وألعاب وأدوات في مساحة واحدة.</p><button class="btn-secondary" data-view="world">اكتشف العالم</button></section><div class="right-footer">مجتمع · ألعاب · مشاريع · أدوات<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
+    mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + mobileNav("world", "✧") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("messages", "✉") + mobileNav("my-profile", "○") +
     '</nav><div id="modal-root"></div><div id="global-notice" class="notice global-notice" hidden></div></div>';
 }
 function navItem(view, symbol, label, extra = "") {
@@ -255,6 +266,7 @@ async function navigate(view, param) {
     else if (view === "reels") await renderReels();
     else if (view === "games") await renderGames();
     else if (view === "tools") await renderTools();
+    else if (view === "world") await renderWorld();
     else if (view === "settings") await renderSettings();
     else if (view === "profile") await renderProfile(currentProfileId || session.user.id);
     else if (view === "notifications") await renderNotifications();
@@ -593,10 +605,32 @@ function resetGame() {
   if(activeGame==="ttt"||activeGame==="memory"||activeGame==="2048"||activeGame==="rps"||activeGame==="quiz")return renderGame(activeGame);
   renderGames();
 }
+const WORLD_CATEGORIES = [
+  ["all","الكل"],["community","مجتمع وتواصل"],["productivity","إنتاجية"],["automation","أتمتة"],
+  ["ai","ذكاء اصطناعي"],["creative","تصميم وإبداع"],["media","صوت وفيديو"],["development","تطوير"],["data","بيانات"],["business","أعمال"],["infrastructure","بنية تحتية"]
+];
+function renderWorld() {
+  const filtered = WORLD_PROJECTS.filter(item => worldCategory === "all" || item.category === worldCategory);
+  const categoryButtons = WORLD_CATEGORIES.map(([key,label]) =>
+    '<button class="world-category ' + (worldCategory === key ? "selected" : "") + '" data-action="world-category" data-category="' + key + '">' + label + '</button>'
+  ).join("");
+  const cards = filtered.map(item => {
+    const repo = item.owner + "/" + item.name;
+    const haystack = (repo + " " + item.description).toLowerCase();
+    return '<article class="world-card" data-search="' + esc(haystack) + '"><div class="world-card-top"><span class="world-repo-icon">⌘</span><span class="world-open-source">GitHub</span></div><h3>' + esc(item.name) + '</h3><small class="world-owner">' + esc(item.owner) + '</small><p>' + esc(item.description) + '</p><a href="https://github.com/' + encodeURIComponent(item.owner) + '/' + encodeURIComponent(item.name) + '" target="_blank" rel="noopener noreferrer">فتح المستودع ↗</a></article>';
+  }).join("");
+  showContent('<div class="world-page"><section class="world-hero"><div><span class="promo-kicker">DAZZA WORLD</span><h1>العالم المفتوح</h1><p>مجتمعك وأدواتك ومكتبة من المشاريع المفتوحة المصدر، كلها من مكان واحد.</p><div class="world-hero-stats"><strong>100</strong><span>مشروع مختار من GitHub</span></div></div><div class="world-orbit">دَزّة<br><small>EXPLORE</small></div></section><section class="world-shortcuts"><button data-view="games"><span>✦</span><strong>الألعاب</strong><small>تحديات داخل دَزّة</small></button><button data-view="tools"><span>⌘</span><strong>الأدوات</strong><small>مختبر دَزّة</small></button><button data-view="messages"><span>✉</span><strong>المحادثات</strong><small>تواصل مباشر</small></button><button data-view="explore"><span>⌕</span><strong>المجتمع</strong><small>اكتشف الأعضاء</small></button></section><div class="page-heading world-heading"><div><h2>مكتبة المشاريع</h2><p>استكشف المشاريع حسب المجال أو ابحث باسمها.</p></div><span class="free-pill">100 مشروع</span></div><label class="world-search-label" for="world-search">ابحث في المشاريع</label><input id="world-search" class="world-search" value="' + esc(worldSearchTerm) + '" placeholder="مثلاً: ذكاء اصطناعي، تصميم، دردشة..."><div class="world-categories">' + categoryButtons + '</div><div class="world-results-head"><strong>المشاريع المتاحة</strong><span id="world-result-count">' + filtered.length + ' مشروع</span></div><div class="world-grid">' + cards + '</div><p class="world-disclaimer">هذه مكتبة روابط للمستودعات الأصلية، وليست نسخاً مستضافة أو مدمجة برمجياً داخل دَزّة. تشغيل أي مشروع داخل المنصة يحتاج مراجعة ترخيصه وأمانه ومتطلباته وخادمه بصورة مستقلة.</p></div>');
+  const search = $("#world-search");
+  if (search && worldSearchTerm) {
+    const event = new Event("input", { bubbles: true });
+    search.dispatchEvent(event);
+  }
+}
+
 async function renderSettings() {
   const avatar=avatarUrl(profile.avatar_path);
   const theme=storageGet("dazza-theme","midnight");
-  showContent('<div class="page-heading"><div><h1>الإعدادات والحساب</h1><p>تحكم بتجربتك داخل دَزّة.</p></div></div><section class="settings-card"><div class="settings-account"><span class="profile-avatar small-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="">':initials(profile.display_name))+'</span><div><strong>'+esc(profile.display_name)+'</strong><small>@'+esc(profile.username)+'</small><small>'+esc(session.user.email||"")+'</small></div></div><button class="btn-secondary" data-action="edit-profile">تعديل بيانات الملف</button></section><section class="settings-card"><h2>المظهر</h2><p>اختر الشكل الذي يناسب عينيك.</p><div class="theme-choices"><button data-action="set-theme" data-theme="midnight" class="'+(theme==="midnight"?"selected":"")+'">ليلي فضائي</button><button data-action="set-theme" data-theme="daylight" class="'+(theme==="daylight"?"selected":"")+'">نهاري هادئ</button></div></section><section class="settings-card"><h2>التطبيق</h2><p>ثبّت دَزّة على الشاشة الرئيسية للوصول السريع. الملفات الأساسية قابلة للتخزين المؤقت، لكن المحتوى والحساب يحتاجان اتصالاً.</p><button class="btn-secondary" data-action="install-app">تثبيت دَزّة</button></section><section class="settings-card settings-danger"><h2>الجلسة والأمان</h2><p>تسجيل الخروج من هذا الجهاز فقط، ولن يتم إنهاء جلساتك على الأجهزة الأخرى.</p><button class="btn-danger" data-action="logout">تسجيل الخروج من الحساب</button></section>');
+  showContent('<div class="page-heading"><div><h1>الإعدادات والحساب</h1><p>تحكم بتجربتك داخل دَزّة.</p></div></div><section class="settings-card"><div class="settings-account"><span class="profile-avatar small-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="">':initials(profile.display_name))+'</span><div><strong>'+esc(profile.display_name)+'</strong><small>@'+esc(profile.username)+'</small><small>'+esc(session.user.email||"")+'</small></div></div><button class="btn-secondary" data-action="edit-profile">تعديل بيانات الملف</button></section><section class="settings-card"><h2>المظهر</h2><p>اختر الشكل الذي يناسب عينيك.</p><div class="theme-choices"><button data-action="set-theme" data-theme="midnight" class="'+(theme==="midnight"?"selected":"")+'">ليلي فضائي</button><button data-action="set-theme" data-theme="daylight" class="'+(theme==="daylight"?"selected":"")+'">نهاري هادئ</button></div></section><section class="settings-card"><h2>التطبيق</h2><p>ثبّت دَزّة على الشاشة الرئيسية للوصول السريع. الملفات الأساسية قابلة للتخزين المؤقت، لكن المحتوى والحساب يحتاجان اتصالاً.</p><button class="btn-secondary" data-action="install-app">تثبيت دَزّة</button></section><section class="settings-card settings-danger"><h2>الحساب والجلسة</h2><p>إدارة الحساب وتسجيل الخروج متاحان من قائمة الحساب الموحدة.</p><button class="btn-secondary" data-action="account-menu">فتح قائمة الحساب</button></section>');
 }
 async function renderTools() {
   const notes=storageJsonGet("dazza-notes", []);
@@ -676,7 +710,24 @@ async function renderProfile(userId) {
   const isFollowing = !!followResult.data;
   const avatar = avatarUrl(user.avatar_path);
   const posts = await enrichPosts(postsResult.data || []);
-  showContent('<div class="profile-page"><section class="profile-header"><div class="profile-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(user.display_name)) + '</div><div class="profile-info"><div class="profile-title"><h1>' + esc(user.username) + '</h1>' + (mine ? '<button class="btn-secondary" data-action="edit-profile">تعديل الملف</button>' : '<button class="' + (isFollowing ? "btn-secondary" : "btn-primary") + '" data-action="follow" data-id="' + user.id + '" data-following="' + isFollowing + '">' + (isFollowing ? "إلغاء المتابعة" : "متابعة") + '</button><button class="btn-secondary" data-action="message-user" data-id="' + user.id + '">رسالة</button>') + '</div><div class="profile-stats"><span><b>' + (postsResult.count || 0) + '</b> منشور</span><button data-action="open-follow-list" data-type="followers" data-id="' + user.id + '"><b>' + (followersResult.count || 0) + '</b> متابع</button><button data-action="open-follow-list" data-type="following" data-id="' + user.id + '"><b>' + (followingResult.count || 0) + '</b> يتابع</button></div><strong>' + esc(user.display_name) + '</strong><p>' + esc(user.bio || "لا توجد نبذة بعد.") + '</p>' + (user.website && (user.website.startsWith("https://") || user.website.startsWith("http://")) ? '<a class="profile-website" href="' + esc(user.website) + '" target="_blank" rel="noopener noreferrer">' + esc(user.website) + '</a>' : '') + '</div></section><div class="profile-tabs"><span>▦ المنشورات</span></div><div class="profile-grid">' + posts.map(post => '<button class="profile-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,110)) + '</span>') + '</button>').join("") + '</div>' + (!posts.length ? '<div class="empty-state"><h2>ماكو منشورات بعد</h2><p>' + (mine ? "شارك أول منشور ويا مجتمعك." : "هذا الحساب ما نشر أي منشور بعد.") + '</p>' + (mine ? '<button class="btn-primary" data-action="new-post">إنشاء منشور</button>' : '') + '</div>' : '') + '</div>');
+  const socialLabels = {
+    instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube",
+    facebook: "Facebook", x: "X", twitch: "Twitch", discord: "Discord"
+  };
+  const socialLinks = Object.entries(socialLabels).map(([key,label]) => {
+    const href = safeProfileUrl(user.social_links?.[key]);
+    return href ? '<a class="profile-social-link" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' : "";
+  }).filter(Boolean).join("");
+  const musicUrl = safeProfileUrl(user.music_url);
+  let musicHTML = "";
+  if (musicUrl) {
+    const isAudioFile = /\.(mp3|m4a|ogg|wav|aac)(?:$|[?#])/i.test(musicUrl);
+    musicHTML = isAudioFile
+      ? '<section class="profile-music"><span class="profile-music-label">الموسيقى المفضلة</span><audio controls preload="none" src="' + esc(musicUrl) + '">متصفحك لا يدعم تشغيل الصوت.</audio></section>'
+      : '<section class="profile-music"><span class="profile-music-label">الموسيقى المفضلة</span><a class="profile-music-link" href="' + esc(musicUrl) + '" target="_blank" rel="noopener noreferrer">استمع للموسيقى ↗</a></section>';
+  }
+  const website = safeProfileUrl(user.website);
+  showContent('<div class="profile-page"><section class="profile-header"><div class="profile-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(user.display_name)) + '</div><div class="profile-info"><div class="profile-title"><h1>' + esc(user.username) + '</h1>' + (mine ? '<button class="btn-secondary" data-action="edit-profile">تعديل الملف</button>' : '<button class="' + (isFollowing ? "btn-secondary" : "btn-primary") + '" data-action="follow" data-id="' + user.id + '" data-following="' + isFollowing + '">' + (isFollowing ? "إلغاء المتابعة" : "متابعة") + '</button><button class="btn-secondary" data-action="message-user" data-id="' + user.id + '">رسالة</button>') + '</div><div class="profile-stats"><span><b>' + (postsResult.count || 0) + '</b> منشور</span><button data-action="open-follow-list" data-type="followers" data-id="' + user.id + '"><b>' + (followersResult.count || 0) + '</b> متابع</button><button data-action="open-follow-list" data-type="following" data-id="' + user.id + '"><b>' + (followingResult.count || 0) + '</b> يتابع</button></div><strong>' + esc(user.display_name) + '</strong><p>' + esc(user.bio || "لا توجد نبذة بعد.") + '</p>' + (website ? '<a class="profile-website" href="' + esc(website) + '" target="_blank" rel="noopener noreferrer">' + esc(website) + '</a>' : '') + (socialLinks ? '<div class="profile-social-links">' + socialLinks + '</div>' : '') + musicHTML + '</div></section><div class="profile-tabs"><span>▦ المنشورات</span></div><div class="profile-grid">' + posts.map(post => '<button class="profile-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,110)) + '</span>') + '</button>').join("") + '</div>' + (!posts.length ? '<div class="empty-state"><h2>ماكو منشورات بعد</h2><p>' + (mine ? "شارك أول منشور ويا مجتمعك." : "هذا الحساب ما نشر أي منشور بعد.") + '</p>' + (mine ? '<button class="btn-primary" data-action="new-post">إنشاء منشور</button>' : '') + '</div>' : '') + '</div>');
 }
 async function renderFollowList(userId, type) {
   const isFollowers = type === "followers";
@@ -745,7 +796,7 @@ function startRealtime() {
     })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: "user_id=eq." + session.user.id }, () => loadNotificationBadge())
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, payload => {
-      if (currentView === "messages" && activeConversation === payload.new.conversation_id) renderMessages().catch(console.error);
+      if (currentView === "messages" && activeConversation === payload.new.conversation_id) appendDmMessage(payload.new);
     }).subscribe();
 }
 
@@ -762,7 +813,20 @@ function postModal() {
   openModal('<header class="modal-head"><h2>منشور جديد</h2><button data-action="close-modal" class="close-btn">×</button></header><form id="post-form"><label>شنو تحب تشارك؟</label><textarea name="caption" maxlength="2200" rows="4" placeholder="اكتب شي حلو..."></textarea><label>صورة أو فيديو</label><input name="media" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm"><label>الموقع (اختياري)</label><input name="location" maxlength="120" placeholder="بغداد، العراق"><p class="muted small">الحد الأعلى للملف 50 ميغابايت. الصور والفيديوهات في المنشورات متاحة لمستخدمي الموقع.</p><button class="btn-primary full" type="submit">نشر المنشور</button></form>');
 }
 function profileModal() {
-  openModal('<header class="modal-head"><h2>تعديل الملف الشخصي</h2><button data-action="close-modal" class="close-btn">×</button></header><form id="profile-form"><label>الاسم الظاهر</label><input name="display_name" maxlength="80" required value="' + esc(profile.display_name) + '"><label>نبذة عنك</label><textarea name="bio" maxlength="160" rows="3" placeholder="اكتب نبذة بسيطة">' + esc(profile.bio || "") + '</textarea><label>الموقع الإلكتروني</label><input name="website" type="url" maxlength="200" value="' + esc(profile.website || "") + '" placeholder="https://example.com"><label>الصورة الشخصية</label><input name="avatar" type="file" accept="image/jpeg,image/png,image/webp"><button class="btn-primary full" type="submit">حفظ التغييرات</button></form>');
+  const links = profile.social_links || {};
+  const fields = [
+    ["instagram","إنستغرام","https://instagram.com/"],
+    ["tiktok","تيك توك","https://tiktok.com/@"],
+    ["youtube","يوتيوب","https://youtube.com/"],
+    ["facebook","فيسبوك","https://facebook.com/"],
+    ["x","X","https://x.com/"],
+    ["twitch","تويتش","https://twitch.tv/"],
+    ["discord","ديسكورد","https://discord.com/users/"]
+  ];
+  const socialFields = fields.map(([key,label,placeholder]) =>
+    '<label for="social-' + key + '">' + label + '</label><input id="social-' + key + '" name="social_' + key + '" type="url" maxlength="300" value="' + esc(links[key] || "") + '" placeholder="' + placeholder + '">'
+  ).join("");
+  openModal('<header class="modal-head"><h2>تعديل الملف الشخصي</h2><button data-action="close-modal" class="close-btn">×</button></header><form id="profile-form"><label>الاسم الظاهر</label><input name="display_name" maxlength="80" required value="' + esc(profile.display_name) + '"><label>نبذة عنك</label><textarea name="bio" maxlength="160" rows="3" placeholder="اكتب نبذة بسيطة">' + esc(profile.bio || "") + '</textarea><label>الموقع الإلكتروني</label><input name="website" type="url" maxlength="300" value="' + esc(profile.website || "") + '" placeholder="https://example.com"><div class="profile-edit-divider"><strong>موسيقى الملف الشخصي</strong><small>أضف رابط ملف صوتي مباشر مثل MP3 أو رابط استماع خارجي.</small></div><label>رابط الموسيقى</label><input name="music_url" type="url" maxlength="500" value="' + esc(profile.music_url || "") + '" placeholder="https://example.com/music.mp3"><div class="profile-edit-divider"><strong>حسابات التواصل</strong><small>تظهر الروابط التي تضيفها فقط في ملفك الشخصي.</small></div>' + socialFields + '<label>الصورة الشخصية</label><input name="avatar" type="file" accept="image/jpeg,image/png,image/webp"><button class="btn-primary full" type="submit">حفظ التغييرات</button></form>');
 }
 async function uploadMedia(file, folder) {
   if (!file) return null;
@@ -889,6 +953,23 @@ async function followUser(userId, button) {
   loadSuggestions();
 }
 
+function appendDmMessage(message) {
+  if (!message?.id || currentView !== "messages" || message.conversation_id !== activeConversation) return;
+  const box = $("#dm-messages");
+  if (!box) return;
+  const alreadyRendered = Array.from(box.children).some(node => node.dataset.messageId === message.id);
+  if (alreadyRendered) return;
+  const article = document.createElement("article");
+  article.className = "dm-message" + (message.sender_id === session.user.id ? " mine" : "");
+  article.dataset.messageId = message.id;
+  const body = document.createElement("p");
+  body.textContent = message.body || "";
+  const time = document.createElement("small");
+  time.textContent = dateLabel(message.created_at);
+  article.append(body, time);
+  box.append(article);
+  box.scrollTop = box.scrollHeight;
+}
 async function renderMessages() {
   const { data: memberships, error } = await supabase.from("conversation_members").select("conversation_id,joined_at").eq("user_id", session.user.id).order("joined_at", { ascending: false });
   if (error) throw error;
@@ -915,7 +996,12 @@ async function renderMessages() {
   if (selected) {
     const { data: messages, error: messageError } = await supabase.from("messages").select("*").eq("conversation_id", selected.id).order("created_at", { ascending: true }).limit(300);
     if (messageError) throw messageError;
-    messageHTML = '<header class="dm-head"><strong>' + esc(selected.title) + '</strong><small>@' + esc(selected.person?.username || "") + '</small></header><div id="dm-messages" class="dm-messages">' + (messages || []).map(message => '<article class="dm-message ' + (message.sender_id === session.user.id ? "mine" : "") + '"><p>' + esc(message.body) + '</p><small>' + dateLabel(message.created_at) + '</small></article>').join("") + '</div><form id="dm-form" class="dm-form"><input name="body" maxlength="5000" placeholder="اكتب رسالتك..." required><button class="btn-primary" type="submit">إرسال</button></form>';
+    const seen = new Set();
+    const uniqueMessages = (messages || []).filter(message => {
+      if (seen.has(message.id)) return false;
+      seen.add(message.id); return true;
+    });
+    messageHTML = '<header class="dm-head"><strong>' + esc(selected.title) + '</strong><small>@' + esc(selected.person?.username || "") + '</small></header><div id="dm-messages" class="dm-messages">' + uniqueMessages.map(message => '<article class="dm-message ' + (message.sender_id === session.user.id ? "mine" : "") + '" data-message-id="' + esc(message.id) + '"><p>' + esc(message.body) + '</p><small>' + dateLabel(message.created_at) + '</small></article>').join("") + '</div><form id="dm-form" class="dm-form"><input name="body" maxlength="5000" placeholder="اكتب رسالتك..." autocomplete="off" required><button class="btn-primary" type="submit">إرسال</button></form>';
   }
   showContent('<div class="dm-page"><header class="page-heading"><div><h1>الرسائل</h1><p>محادثاتك الخاصة.</p></div><button class="btn-primary" data-action="new-chat">رسالة جديدة</button></header><div class="dm-layout"><aside class="dm-list">' + (rooms.map(room => '<button class="dm-room ' + (room.id === activeConversation ? "selected" : "") + '" data-action="open-dm" data-id="' + room.id + '"><span class="avatar">' + initials(room.title) + '</span><span><strong>' + esc(room.title) + '</strong><small>@' + esc(room.person?.username || "") + '</small></span></button>').join("") || '<p class="muted">ما عندك محادثات بعد.</p>') + '</aside><section class="dm-conversation">' + messageHTML + '</section></div></div>');
   const box = $("#dm-messages");
@@ -986,7 +1072,7 @@ async function onClick(event) {
     if (event.target === node || node.classList.contains("close-btn")) closeModal();
     return;
   }
-  if (action === "my-profile") return navigate("profile", session.user.id);
+  if (action === "my-profile") { closeModal(); return navigate("profile", session.user.id); }
   if (action === "open-profile") return navigate("profile", node.dataset.id);
   if (action === "follow") return followUser(node.dataset.id, node);
   if (action === "open-follow-list") return renderFollowList(node.dataset.id, node.dataset.type);
@@ -1052,6 +1138,7 @@ async function onClick(event) {
   }
   if (action === "retry") return navigate(currentView);
   if (action === "new-chat") return promptNewChat();
+  if (action === "world-category") { worldCategory = node.dataset.category || "all"; return renderWorld(); }
   if (action === "open-dm") { activeConversation = node.dataset.id; return renderMessages(); }
   if (action === "message-user") return startDirectMessage(node.dataset.id);
   if (action === "open-post") return renderPostModal(node.dataset.id);
@@ -1197,20 +1284,29 @@ async function onSubmit(event) {
       }
       const display_name = String(data.get("display_name") || "").trim();
       const bio = String(data.get("bio") || "").trim();
-      const website = String(data.get("website") || "").trim();
-      if (website) {
-        let parsed;
-        try { parsed = new URL(website); } catch { throw new Error("رابط الموقع غير صالح."); }
-        if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("استخدم رابطاً يبدأ بـ https:// أو http://");
+      const websiteValue = String(data.get("website") || "").trim();
+      const musicValue = String(data.get("music_url") || "").trim();
+      const website = safeProfileUrl(websiteValue);
+      const music_url = safeProfileUrl(musicValue);
+      if (websiteValue && !website) throw new Error("رابط الموقع يجب أن يبدأ بـ https:// أو http://");
+      if (musicValue && !music_url) throw new Error("رابط الموسيقى غير صالح. استخدم رابط https:// أو http://");
+      const social_links = {};
+      for (const key of ["instagram","tiktok","youtube","facebook","x","twitch","discord"]) {
+        const value = String(data.get("social_" + key) || "").trim();
+        const url = safeProfileUrl(value);
+        if (value && !url) throw new Error("رابط " + key + " غير صالح. استخدم https:// أو http://");
+        if (url) social_links[key] = url;
       }
+      if (!display_name) throw new Error("اكتب الاسم الظاهر.");
       const { data: updated, error } = await supabase.from("profiles").update({
-        display_name, bio, website: website || null, avatar_path: avatarPath, updated_at: new Date().toISOString()
+        display_name, bio, website: website || null, music_url: music_url || null,
+        social_links, avatar_path: avatarPath, updated_at: new Date().toISOString()
       }).eq("id", session.user.id).select("*").single();
       if (error) throw error;
       if (profile.avatar_path && profile.avatar_path !== avatarPath) {
         await supabase.storage.from(BUCKET).remove([profile.avatar_path]);
       }
-      profile = updated; closeModal(); notice("تم تحديث ملفك الشخصي."); await shell(); await loadSuggestions(); await navigate("profile", session.user.id);
+      profile = updated; closeModal(); notice("تم تحديث ملفك الشخصي."); shell(); await loadSuggestions(); await navigate("profile", session.user.id);
       setBusy(false); return;
     }
     if (form.matches(".comment-form")) {
@@ -1226,13 +1322,26 @@ async function onSubmit(event) {
       return;
     }
     if (form.id === "dm-form") {
+      if (form.dataset.sending === "true") return;
       const body = String(data.get("body") || "").trim();
       if (!body || !activeConversation) return;
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: activeConversation, sender_id: session.user.id, body
-      });
-      if (error) throw error;
-      await renderMessages();
+      const submitButton = $('button[type="submit"]', form);
+      const input = $('input[name="body"]', form);
+      form.dataset.sending = "true";
+      if (submitButton) { submitButton.disabled = true; submitButton.textContent = "جارٍ الإرسال…"; }
+      try {
+        const { data: message, error } = await supabase.from("messages").insert({
+          conversation_id: activeConversation, sender_id: session.user.id, body
+        }).select("*").single();
+        if (error) throw error;
+        appendDmMessage(message);
+        form.reset();
+        input?.focus();
+      } finally {
+        form.dataset.sending = "false";
+        if (submitButton) { submitButton.disabled = false; submitButton.textContent = "إرسال"; }
+      }
+      return;
     }
     if (form.id === "search-form") {
       searchTerm = String(data.get("query") || "").trim();
@@ -1259,6 +1368,18 @@ async function onChange(event) {
   if (target.id === "story-upload") await addStory(target.files?.[0]);
 }
 function onInput(event) {
+  if (event.target.id === "world-search") {
+    worldSearchTerm = event.target.value.trim().toLowerCase();
+    const cards = Array.from(root.querySelectorAll(".world-card"));
+    let visible = 0;
+    cards.forEach(card => {
+      const matches = !worldSearchTerm || card.dataset.search.includes(worldSearchTerm);
+      card.hidden = !matches;
+      if (matches) visible++;
+    });
+    const count = $("#world-result-count");
+    if (count) count.textContent = visible + " مشروع";
+  }
   if (event.target.id === "live-search") {
     searchTerm = event.target.value;
   }
