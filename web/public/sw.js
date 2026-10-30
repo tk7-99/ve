@@ -1,4 +1,4 @@
-const CACHE_NAME = "dazza-cosmos-shell-v1";
+const CACHE_NAME = "dazza-cosmos-shell-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/dazza-icon.svg"];
 self.addEventListener("install", event => {
   event.waitUntil(

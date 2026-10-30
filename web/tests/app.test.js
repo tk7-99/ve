@@ -122,3 +122,57 @@ test("social room pages and challenge permissions are protected by RLS", async (
   assert.match(migration, /dazza room members send realtime/);
   assert.match(migration, /grant select, insert, update, delete on public\.dazza_rooms to authenticated/);
 });
+
+
+test("social rooms use expiring membership heartbeats and strict room presence", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  const hardening = await readFile(new URL("../../supabase/migrations/20261030090000_dazza_room_rls_capacity_heartbeat_hardening.sql", import.meta.url), "utf8");
+  const grace = await readFile(new URL("../../supabase/migrations/20261030091000_dazza_room_heartbeat_grace_window.sql", import.meta.url), "utf8");
+  assert.match(social, /last_seen_at/);
+  assert.match(social, /roomHeartbeat/);
+  assert.match(social, /expires_at/);
+  assert.match(social, /heartbeatFailures >= 4/);
+  assert.match(hardening, /dazza_room_members_capacity_before_insert/);
+  assert.match(hardening, /private\.is_dazza_room_member/);
+  assert.match(hardening, /dazza_room_messages_rate_before_insert/);
+  assert.match(grace, /interval '3 minutes'/);
+  assert.doesNotMatch(hardening, /using \(\s*exists\s*\(\s*select 1 from public\.dazza_room_members/);
+});
+
+test("YouTube room links reject lookalike domains and malformed identifiers", async () => {
+  const { getYouTubeVideoId } = await import("../src/social-world.js");
+  assert.equal(getYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://music.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://youtube.com.attacker.invalid/watch?v=dQw4w9WgXcQ"), "");
+  assert.equal(getYouTubeVideoId("https://example.com/watch?v=dQw4w9WgXcQ"), "");
+  assert.equal(getYouTubeVideoId("https://youtu.be/short"), "");
+});
+
+test("quiz answer results are checked by the host and repeated answers are blocked", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  assert.match(social, /answeredQuizQuestions\.has\(questionIndex\)/);
+  assert.match(social, /hostQuizAnswers\.has\(answerKey\)/);
+  assert.match(social, /answerIndex === question\.correct/);
+  assert.doesNotMatch(social, /correct: index === question\.correct/);
+  assert.match(social, /quiz-answer-result/);
+});
+
+
+test("room chat shows latest messages and avoids duplicate inserts after broadcast errors", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  assert.ok(social.includes('order("created_at", { ascending: false }).limit(80)'));
+  assert.ok(social.includes("form.reset();"));
+  assert.ok(social.includes("Room message saved but realtime delivery failed"));
+  assert.ok(social.includes("item.reward_points + ' نقطة رمزية</span>"));
+});
+
+test("server-side room guards cap voice rooms and normalize timestamps", async () => {
+  const migration = await readFile(new URL("../../supabase/migrations/20261030092000_dazza_room_server_side_guards.sql", import.meta.url), "utf8");
+  assert.ok(migration.includes("dazza_voice_room_max_members"));
+  assert.ok(migration.includes("new.expires_at := now() + interval '24 hours'"));
+  assert.ok(migration.includes("new.created_at := now()"));
+  assert.ok(migration.includes("new.joined_at := now()"));
+  assert.ok(migration.includes("pg_advisory_xact_lock"));
+  assert.ok(migration.includes("interval '10 seconds'"));
+});
