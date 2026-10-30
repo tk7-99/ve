@@ -153,9 +153,8 @@ async def test_email_resend_cooldown_and_provider_failure(state, client):
         assert second.status_code == 429
         assert state.providers.send_email.await_count == 1
 
-    state.redis = RedisFake()
-    state.providers.send_email.side_effect = RuntimeError('provider unavailable')
-    async with client:
+        state.redis = RedisFake()
+        state.providers.send_email.side_effect = RuntimeError('provider unavailable')
         failed = await client.post(
             '/v1/auth/email/start',
             json={'email': 'other@example.test'},
