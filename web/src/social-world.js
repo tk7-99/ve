@@ -435,11 +435,13 @@ async function connectRoomChannel() {
       heartbeatFailures++;
       console.warn("Room heartbeat:", error);
       if (heartbeatFailures >= 4 && activeRoom) {
-        const room = activeRoom;
-        await runtime.supabase.from("dazza_room_members").delete()
-          .eq("room_id", room.id).eq("user_id", runtime.user.id);
-        await closeRealtime();
-        activeRoom = null;
+        try {
+          await leaveSocialRoom({ refresh: false, announce: false });
+        } catch (leaveError) {
+          console.warn("Could not finalize the expired room session:", leaveError);
+          await closeRealtime();
+          activeRoom = null;
+        }
         notify("انقطع اتصال الغرفة. يمكنك العودة من قائمة الغرف.");
         await runtime.navigate?.("social");
       }
