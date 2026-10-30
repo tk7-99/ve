@@ -9,6 +9,7 @@ let roomChannel = null;
 let roomMembers = [];
 let roomHeartbeat = null;
 let heartbeatBusy = false;
+let heartbeatFailures = 0;
 let currentQuizQuestionIndex = null;
 const answeredQuizQuestions = new Set();
 const hostQuizAnswers = new Set();
@@ -368,7 +369,7 @@ async function connectRoomChannel() {
     })
     .on("broadcast", { event: "quiz-state" }, event => {
       const state = event?.payload || event;
-      if (state?.questionIndex !== currentQuizQuestionIndex) answeredQuizQuestions.clear();
+      answeredQuizQuestions.clear();
       currentQuizQuestionIndex = state?.questionIndex ?? null;
       renderRoomQuiz(state);
     })
@@ -413,8 +414,25 @@ async function connectRoomChannel() {
   }
   await heartbeatRoom();
   if (!activeRoom || !roomChannel) throw new Error("انتهى اتصالك بالغرفة.");
-  roomHeartbeat = setInterval(() => {
-    heartbeatRoom().catch(error => console.warn("Room heartbeat:", error));
+  heartbeatFailures = 0;
+  roomHeartbeat = setInterval(async () => {
+    try {
+      const renewed = await heartbeatRoom();
+      if (!renewed) throw new Error("انتهت عضويتك في الغرفة.");
+      heartbeatFailures = 0;
+    } catch (error) {
+      heartbeatFailures++;
+      console.warn("Room heartbeat:", error);
+      if (heartbeatFailures >= 4 && activeRoom) {
+        const room = activeRoom;
+        await runtime.supabase.from("dazza_room_members").delete()
+          .eq("room_id", room.id).eq("user_id", runtime.user.id);
+        await closeRealtime();
+        activeRoom = null;
+        notify("انقطع اتصال الغرفة. يمكنك العودة من قائمة الغرف.");
+        await runtime.navigate?.("social");
+      }
+    }
   }, 25000);
   await updatePresence();
   await loadRoomChat();
@@ -707,18 +725,17 @@ function ensureYouTubeAPI() {
       resolve(window.YT);
     };
     let script = $('script[src="https://www.youtube.com/iframe_api"]');
-    if (!script) {
-      script = document.createElement("script");
+      if (!script) {
       script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       script.async = true;
-      script.onerror = () => {
-        clearTimeout(timeout);
-        youTubeApiPromise = null;
-        reject(new Error("فشل تحميل مشغل يوتيوب."));
-      };
       document.head.append(script);
     }
+    script.onerror = () => {
+      clearTimeout(timeout);
+      youTubeApiPromise = null;
+      reject(new Error("فشل تحميل مشغل يوتيوب."));
+    };
   });
   return youTubeApiPromise;
 }
