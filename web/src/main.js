@@ -514,24 +514,11 @@ async function renderMessages() {
   conversations = rooms;
 }
 async function startDirectMessage(userId) {
-  const { data: mine, error } = await supabase.from("conversation_members").select("conversation_id").eq("user_id", session.user.id);
+  const { data: conversationId, error } = await supabase.rpc("create_direct_conversation", {
+    p_other_user_id: userId
+  });
   if (error) return notice(error.message, "error");
-  const existingIds = (mine || []).map(row => row.conversation_id);
-  if (existingIds.length) {
-    const other = await supabase.from("conversation_members").select("conversation_id").eq("user_id", userId).in("conversation_id", existingIds);
-    if (other.error) return notice(other.error.message, "error");
-    if (other.data?.length) {
-      activeConversation = other.data[0].conversation_id;
-      return navigate("messages");
-    }
-  }
-  const { data: conv, error: createError } = await supabase.from("conversations").insert({ created_by: session.user.id }).select("id").single();
-  if (createError) return notice(createError.message, "error");
-  const { error: first } = await supabase.from("conversation_members").insert({ conversation_id: conv.id, user_id: session.user.id });
-  if (first) return notice(first.message, "error");
-  const { error: second } = await supabase.from("conversation_members").insert({ conversation_id: conv.id, user_id: userId });
-  if (second) return notice(second.message, "error");
-  activeConversation = conv.id;
+  activeConversation = conversationId;
   await navigate("messages");
 }
 async function promptNewChat() {
