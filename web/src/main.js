@@ -952,6 +952,10 @@ async function onClick(event) {
     storageSet("dazza-theme", next); applyTheme(); notice(next === "daylight" ? "تم تفعيل المظهر النهاري." : "تم تفعيل المظهر الليلي.");
     return;
   }
+  if (action === "set-theme") {
+    storageSet("dazza-theme", node.dataset.theme === "daylight" ? "daylight" : "midnight");
+    applyTheme(); return renderSettings();
+  }
   if (action === "toggle-password") {
     const input = $("#password");
     if (input) { input.type = input.type === "password" ? "text" : "password"; node.setAttribute("aria-label", input.type === "password" ? "إظهار كلمة المرور" : "إخفاء كلمة المرور"); }
@@ -1121,6 +1125,35 @@ async function onSubmit(event) {
       if (current.session) await enter(current.session);
       else authView("login");
       notice("تم تغيير كلمة المرور بنجاح.");
+      return;
+    }
+    if (form.id === "calculator-form") {
+      const a=Number(data.get("a")), b=Number(data.get("b")), op=String(data.get("operator"));
+      if(!Number.isFinite(a)||!Number.isFinite(b))throw new Error("أدخل رقمين صالحين.");
+      if(op==="/"&&b===0)throw new Error("لا يمكن القسمة على صفر.");
+      let result=0;
+      if(op==="+")result=a+b;else if(op==="-")result=a-b;else if(op==="*")result=a*b;else if(op==="/")result=a/b;else if(op==="%")result=a%b;
+      const output=$("#calculator-output");
+      if(output)output.textContent=Number.isFinite(result)?new Intl.NumberFormat("ar-IQ",{maximumFractionDigits:8}).format(result):"نتيجة غير صالحة";
+      return;
+    }
+    if (form.id === "converter-form") {
+      const amount=Number(data.get("amount")), kind=String(data.get("conversion"));
+      if(!Number.isFinite(amount))throw new Error("أدخل قيمة رقمية.");
+      const formulas={
+        "km-mi":[amount=>amount*0.621371,"ميل"],
+        "mi-km":[amount=>amount/0.621371,"كم"],
+        "kg-lb":[amount=>amount*2.2046226218,"باوند"],
+        "lb-kg":[amount=>amount/2.2046226218,"كغم"],
+        "c-f":[amount=>amount*9/5+32,"°F"],
+        "f-c":[amount=>(amount-32)*5/9,"°C"],
+        "cm-in":[amount=>amount/2.54,"إنش"],
+        "in-cm":[amount=>amount*2.54,"سم"]
+      };
+      const [convert,unit]=formulas[kind];
+      const value=convert(amount);
+      const output=$("#converter-output");
+      if(output)output.textContent=new Intl.NumberFormat("ar-IQ",{maximumFractionDigits:4}).format(value)+" "+unit;
       return;
     }
     if (form.id === "post-form") {
