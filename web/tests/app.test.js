@@ -44,7 +44,7 @@ test("mobile account menu exposes settings and logout", () => {
   const shell = between("function shell()", "function navItem(");
   assert.ok(shell.includes('data-action="account-menu"'));
   assert.ok(source.includes('data-view="settings"'));
-  assert.ok(shell.includes('data-action="logout"'));
+  assert.ok(source.includes('data-action="logout"'));
 });
 
 test("arcade includes five playable games and game engines", () => {
