@@ -137,19 +137,21 @@ function shell() {
   const avatarHTML = avatar
     ? '<img class="avatar-img" src="' + esc(avatar) + '" alt="">'
     : '<span>' + initials(profile?.display_name) + '</span>';
-  root.innerHTML = '<div class="social-app"><aside class="left-sidebar"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><nav class="main-nav">' +
+  root.innerHTML = '<div class="social-app"><aside class="left-sidebar"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span><b>دَزّة</b><small>YOUR WORLD. YOUR WAY.</small></span></a><nav class="main-nav">' +
     navItem("feed", "⌂", "الرئيسية") +
     navItem("explore", "⌕", "استكشف") +
     navItem("reels", "▷", "ريلز") +
+    navItem("games", "✦", "مركز الألعاب") +
+    navItem("tools", "⌘", "الأدوات") +
     navItem("messages", "✉", "الرسائل") +
     navItem("notifications", "♡", "الإشعارات", '<i id="notification-badge" class="nav-badge" hidden></i>') +
     navItem("saved", "▣", "المحفوظات") +
-    '<button class="nav-item" data-action="new-post"><span class="nav-icon">＋</span><span>إنشاء منشور</span></button>' +
-    '<button class="nav-item" data-action="edit-profile"><span class="nav-icon">⚙</span><span>تعديل الملف</span></button>' +
+    '<button class="nav-item create-nav" data-action="new-post"><span class="nav-icon">＋</span><span>إنشاء منشور</span></button>' +
+    navItem("settings", "⚙", "الإعدادات") +
     '<button class="nav-item profile-nav" data-action="my-profile"><span class="nav-avatar">' + avatarHTML + '</span><span>الملف الشخصي</span></button>' +
     '<button class="nav-item nav-logout" data-action="logout"><span class="nav-icon">↪</span><span>تسجيل الخروج</span></button>' +
-    '</nav><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed">دَزّة</a><div><button class="icon-action" data-view="notifications" aria-label="الإشعارات">♡</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">حمّل المجتمع واكتشف حسابات جديدة.</div></div><div class="right-footer">حول · المساعدة · الخصوصية · الشروط<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
-    mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + mobileNav("reels", "▷") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("notifications", "♡") + mobileNav("my-profile", "○") +
+    '</nav><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span><button class="install-link" data-action="install-app">تثبيت التطبيق على جهازك ↗</button></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><div class="mobile-header-actions"><span id="network-status" class="network-pill" hidden>غير متصل</span><button class="icon-action" data-action="install-app" aria-label="تثبيت">⇩</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button><button class="icon-action account-trigger" data-action="account-menu" aria-label="الحساب">' + avatarHTML + '</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">اكتشف وجوهاً وأفكاراً جديدة.</div></div><section class="right-promo"><span class="promo-kicker">DAZZA ARCADE</span><strong>استراحة ذكية؟</strong><p>ألعاب خفيفة وتحديات قصيرة داخل التطبيق.</p><button class="btn-secondary" data-view="games">اكتشف الألعاب</button></section><div class="right-footer">مجتمع · ألعاب · أدوات · خصوصية<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
+    mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + mobileNav("games", "✦") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("notifications", "♡") + mobileNav("my-profile", "○") +
     '</nav><div id="modal-root"></div><div id="global-notice" class="notice global-notice" hidden></div></div>';
 }
 function navItem(view, symbol, label, extra = "") {
@@ -660,6 +662,7 @@ async function onClick(event) {
   const view = node.dataset.view;
   if (view) {
     event.preventDefault();
+    closeModal();
     if (view === "my-profile") await navigate("profile", session.user.id);
     else await navigate(view);
     return;
