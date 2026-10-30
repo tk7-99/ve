@@ -23,6 +23,10 @@ on:
       - ".github/workflows/dazza-mobile-ci.yml"
   workflow_dispatch:
 
+concurrency:
+  group: dazza-mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
