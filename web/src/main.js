@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import "./style.css";
 import { WORLD_PROJECTS } from "./world-catalog.js";
+import { configureSocialWorld, renderSocialWorld, handleSocialAction, handleSocialSubmit, cleanupSocialWorld, openSharedSocialRoom } from "./social-world.js";
 
 const $ = (selector, scope = document) => scope.querySelector(selector);
 const root = $("#root");
@@ -96,6 +97,7 @@ function setBusy(value) {
   root.classList.toggle("is-busy", value);
 }
 function resetSignedInState() {
+  cleanupSocialWorld().catch(error => console.warn("Social room cleanup:", error));
   session = null;
   profile = null;
   isAdmin = false;
@@ -165,9 +167,10 @@ function shell() {
     '<div class="nav-section-label">مساحة دَزّة</div>' +
     navItem("world", "✧", "العالم المفتوح") +
     navItem("games", "✦", "مركز الألعاب") +
+    navItem("social", "◉", "الغرف والتحديات") +
     navItem("tools", "⌘", "الأدوات") +
     '<button class="nav-item create-nav" data-action="new-post"><span class="nav-icon">＋</span><span>إنشاء منشور</span></button>' +
-    '</nav><div class="sidebar-account-wrap"><button class="sidebar-account" data-action="account-menu"><span class="sidebar-account-avatar">' + avatarHTML + '</span><span class="sidebar-account-copy"><strong>' + esc(profile?.display_name || "حسابي") + '</strong><small>الحساب والإعدادات</small></span><span class="sidebar-account-more">•••</span></button><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span><button class="install-link" data-action="install-app">تثبيت التطبيق على جهازك ↗</button></div></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><div class="mobile-header-actions"><span id="network-status" class="network-pill" hidden>غير متصل</span><button class="icon-action" data-action="install-app" aria-label="تثبيت">⇩</button><button class="icon-action" data-view="notifications" aria-label="الإشعارات">♡</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button><button class="icon-action account-trigger" data-action="account-menu" aria-label="الحساب">' + avatarHTML + '</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">اكتشف وجوهاً وأفكاراً جديدة.</div></div><section class="right-promo"><span class="promo-kicker">DAZZA WORLD</span><strong>عالمك في مكان واحد</strong><p>مجتمع ومشاريع وألعاب وأدوات في مساحة واحدة.</p><button class="btn-secondary" data-view="world">اكتشف العالم</button></section><div class="right-footer">مجتمع · ألعاب · مشاريع · أدوات<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
+    '</nav><div class="sidebar-account-wrap"><button class="sidebar-account" data-action="account-menu"><span class="sidebar-account-avatar">' + avatarHTML + '</span><span class="sidebar-account-copy"><strong>' + esc(profile?.display_name || "حسابي") + '</strong><small>الحساب والإعدادات</small></span><span class="sidebar-account-more">•••</span></button><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span><button class="install-link" data-action="install-app">تثبيت التطبيق على جهازك ↗</button></div></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><div class="mobile-header-actions"><span id="network-status" class="network-pill" hidden>غير متصل</span><button class="icon-action" data-action="install-app" aria-label="تثبيت">⇩</button><button class="icon-action" data-view="notifications" aria-label="الإشعارات">♡</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button><button class="icon-action" data-view="social" aria-label="الغرف والتحديات">◉</button><button class="icon-action account-trigger" data-action="account-menu" aria-label="الحساب">' + avatarHTML + '</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">اكتشف وجوهاً وأفكاراً جديدة.</div></div><section class="right-promo"><span class="promo-kicker">DAZZA WORLD</span><strong>عالمك في مكان واحد</strong><p>مجتمع ومشاريع وألعاب وأدوات في مساحة واحدة.</p><button class="btn-secondary" data-view="world">اكتشف العالم</button></section><div class="right-footer">مجتمع · ألعاب · مشاريع · أدوات<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
     mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + mobileNav("world", "✧") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("messages", "✉") + mobileNav("my-profile", "○") +
     '</nav><div id="modal-root"></div><div id="global-notice" class="notice global-notice" hidden></div></div>';
 }
@@ -207,6 +210,7 @@ async function enter(nextSession) {
     throw new Error(error?.message || "حسابك لم يكتمل إعداده بعد. جرّب مرة ثانية.");
   }
   profile = data;
+  configureSocialWorld({ supabase, user: session.user, profile, showContent, notify, navigate });
   const admin = await supabase.from("app_admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
   isAdmin = !!admin.data;
   shell();
@@ -219,6 +223,14 @@ async function enter(nextSession) {
     await renderPostModal(linkedPost);
     const cleanUrl = new URL(location.href);
     cleanUrl.searchParams.delete("post");
+    history.replaceState({}, "", cleanUrl.toString());
+  }
+  const linkedRoom = new URLSearchParams(location.search).get("room");
+  if (linkedRoom) {
+    await navigate("social");
+    await openSharedSocialRoom(linkedRoom);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete("room");
     history.replaceState({}, "", cleanUrl.toString());
   }
 }
@@ -255,6 +267,7 @@ async function boot() {
 }
 async function navigate(view, param) {
   if (!session) return authView("login");
+  if (view !== "social") await cleanupSocialWorld();
   if (view !== "games" && memoryClock) { clearInterval(memoryClock); memoryClock=null; }
   currentView = view;
   if (param !== undefined) currentProfileId = param;
@@ -265,6 +278,7 @@ async function navigate(view, param) {
     else if (view === "explore") await renderExplore();
     else if (view === "reels") await renderReels();
     else if (view === "games") await renderGames();
+    else if (view === "social") await renderSocialWorld();
     else if (view === "tools") await renderTools();
     else if (view === "world") await renderWorld();
     else if (view === "settings") await renderSettings();
@@ -1039,6 +1053,7 @@ async function onClick(event) {
     return;
   }
   if (!action) return;
+  if (action.startsWith("social-") && await handleSocialAction(action, node)) return;
   if (action === "switch-auth") return authView(node.dataset.mode);
   if (action === "logout") return signOutUser();
   if (action === "account-menu") return accountMenu();
@@ -1167,6 +1182,7 @@ async function onSubmit(event) {
   event.preventDefault();
   const data = new FormData(form);
   try {
+    if (await handleSocialSubmit(event)) return;
     if (form.id === "auth-form") {
       const mode = form.dataset.mode;
       const email = String(data.get("email") || "").trim().toLowerCase();
@@ -1306,7 +1322,9 @@ async function onSubmit(event) {
       if (profile.avatar_path && profile.avatar_path !== avatarPath) {
         await supabase.storage.from(BUCKET).remove([profile.avatar_path]);
       }
-      profile = updated; closeModal(); notice("تم تحديث ملفك الشخصي."); shell(); await loadSuggestions(); await navigate("profile", session.user.id);
+      profile = updated;
+      configureSocialWorld({ supabase, user: session.user, profile, showContent, notify, navigate });
+      closeModal(); notice("تم تحديث ملفك الشخصي."); shell(); await loadSuggestions(); await navigate("profile", session.user.id);
       setBusy(false); return;
     }
     if (form.matches(".comment-form")) {
