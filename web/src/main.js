@@ -137,7 +137,7 @@ async function openConversation(id) {
 }
 function messageHtml(m) {
   const own=m.sender_id===session?.user.id;
-  return `<article class="message ${own?"own":""}"><p>${esc(m.body)}</p><small>${new Date(m.created_at).toLocaleTimeString("ar-IQ",{hour:"2-digit",minute:"2-digit"})}</small></article>`;
+  return `<article class="message ${own?"own":""}" data-message="${m.id}"><p>${esc(m.body)}</p><small>${new Date(m.created_at).toLocaleTimeString("ar-IQ",{hour:"2-digit",minute:"2-digit"})}</small></article>`;
 }
 function appendMessage(m) {
   const box=$("#messages"); if(!box || m.conversation_id!==activeConversation || box.querySelector('[data-message="'+m.id+'"]')) return;
