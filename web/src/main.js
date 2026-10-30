@@ -118,21 +118,28 @@ async function renderAdmin() {
   }));
 }
 async function createChat() {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const currentUser = authData?.user;
+  if (authError || !currentUser) {
+    session = null;
+    return notice("انتهت جلسة الدخول. سجّل دخولك من جديد ثم حاول فتح المحادثة.", "error");
+  }
+  session = { ...session, user: currentUser };
   const username = prompt("اكتب اسم المستخدم، بدون @");
   if (!username) return;
   const {data: person, error} = await supabase.from("profiles").select("id,username,display_name").eq("username",username.trim().replace(/^@/,"").toLowerCase()).maybeSingle();
   if (error) return notice(error.message,"error");
   if (!person) return notice("ما لكينا هذا المستخدم. تأكد من اسم المستخدم.","error");
-  if (person.id === session.user.id) return notice("ما تكدر تفتح محادثة ويا نفسك.","error");
-  const {data: mine} = await supabase.from("conversation_members").select("conversation_id").eq("user_id",session.user.id);
+  if (person.id === currentUser.id) return notice("ما تكدر تفتح محادثة ويا نفسك.","error");
+  const {data: mine} = await supabase.from("conversation_members").select("conversation_id").eq("user_id",currentUser.id);
   const existing = mine?.map(x=>x.conversation_id) || [];
   if (existing.length) {
     const {data: theirs} = await supabase.from("conversation_members").select("conversation_id").eq("user_id",person.id).in("conversation_id",existing);
     if (theirs?.length) return openConversation(theirs[0].conversation_id);
   }
-  const {data: conv,error: createError} = await supabase.from("conversations").insert({}).select("id").single();
-  if (createError) return notice(createError.message,"error");
-  const {error: firstError} = await supabase.from("conversation_members").insert({conversation_id:conv.id,user_id:session.user.id});
+  const {data: conv,error: createError} = await supabase.from("conversations").insert({created_by: currentUser.id}).select("id").single();
+  if (createError) return notice("تعذر إنشاء المحادثة: " + createError.message,"error");
+  const {error: firstError} = await supabase.from("conversation_members").insert({conversation_id:conv.id,user_id:currentUser.id});
   if (firstError) return notice(firstError.message,"error");
   const {error: secondError} = await supabase.from("conversation_members").insert({conversation_id:conv.id,user_id:person.id});
   if (secondError) return notice(secondError.message,"error");
