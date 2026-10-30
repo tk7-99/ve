@@ -65,6 +65,7 @@ function shell() {
   root.innerHTML = '<div class="social-app"><aside class="left-sidebar"><a class="logo" href="#" data-view="feed"><span class="logo-mark">د</span><span>دَزّة</span></a><nav class="main-nav">' +
     navItem("feed", "⌂", "الرئيسية") +
     navItem("explore", "⌕", "استكشف") +
+    navItem("reels", "▷", "ريلز") +
     navItem("messages", "✉", "الرسائل") +
     navItem("notifications", "♡", "الإشعارات", '<i id="notification-badge" class="nav-badge" hidden></i>') +
     navItem("saved", "▣", "المحفوظات") +
@@ -73,7 +74,7 @@ function shell() {
     '<button class="nav-item profile-nav" data-action="my-profile"><span class="nav-avatar">' + avatarHTML + '</span><span>الملف الشخصي</span></button>' +
     '<button class="nav-item nav-logout" data-action="logout"><span class="nav-icon">↪</span><span>تسجيل الخروج</span></button>' +
     '</nav><div class="sidebar-bottom"><span class="muted small">دَزّة · مجتمع عراقي</span></div></aside><main class="main-column"><header class="mobile-header"><a class="logo" href="#" data-view="feed">دَزّة</a><div><button class="icon-action" data-view="notifications" aria-label="الإشعارات">♡</button><button class="icon-action" data-view="messages" aria-label="الرسائل">✉</button></div></header><div id="content" class="content-column"></div></main><aside class="right-sidebar"><div class="my-mini-profile">' + avatarHTML + '<div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div><button class="link-btn" data-action="my-profile">عرض</button></div><div class="suggestions" id="suggestions"><div class="section-head"><strong>اقتراحات للمتابعة</strong><button class="link-btn" data-view="explore">عرض الكل</button></div><div class="muted small">حمّل المجتمع واكتشف حسابات جديدة.</div></div><div class="right-footer">حول · المساعدة · الخصوصية · الشروط<br>© دَزّة 2026</div></aside><nav class="mobile-nav">' +
-    mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("notifications", "♡") + mobileNav("my-profile", "○") +
+    mobileNav("feed", "⌂") + mobileNav("explore", "⌕") + mobileNav("reels", "▷") + '<button data-action="new-post" aria-label="إنشاء">＋</button>' + mobileNav("notifications", "♡") + mobileNav("my-profile", "○") +
     '</nav><div id="modal-root"></div><div id="global-notice" class="notice global-notice" hidden></div></div>';
 }
 function navItem(view, symbol, label, extra = "") {
@@ -147,6 +148,7 @@ async function navigate(view, param) {
   try {
     if (view === "feed") await renderFeed();
     else if (view === "explore") await renderExplore();
+    else if (view === "reels") await renderReels();
     else if (view === "profile") await renderProfile(currentProfileId || session.user.id);
     else if (view === "notifications") await renderNotifications();
     else if (view === "saved") await renderSaved();
@@ -241,6 +243,16 @@ async function getStories() {
   return [...groups.values()].map(group => ({ ...group, latest: group.stories[group.stories.length - 1] }));
 }
 
+async function renderReels() {
+  const { data, error } = await supabase.from("posts").select("*").eq("media_type", "video").order("created_at", { ascending: false }).limit(40);
+  if (error) throw error;
+  const posts = await enrichPosts(data || []);
+  showContent('<div class="page-heading"><div><h1>ريلز دَزّة</h1><p>مقاطع قصيرة من مجتمعنا.</p></div></div>' +
+    (posts.map(post => '<article class="reel-card"><video class="reel-video" src="' + esc(publicUrl(post.media_path)) + '" controls playsinline preload="metadata"></video>' +
+    '<div class="reel-info"><button class="post-author" data-action="open-profile" data-id="' + post.user_id + '"><strong>' + esc(post.author?.display_name || post.author?.username || "عضو") + '</strong><small>@' + esc(post.author?.username || "") + '</small></button>' +
+    '<p>' + esc(post.caption) + '</p><div class="reel-actions"><button class="post-action ' + (post.liked ? "is-liked" : "") + '" data-action="toggle-like" data-id="' + post.id + '" data-liked="' + post.liked + '"><span>' + (post.liked ? "♥" : "♡") + '</span><b>' + post.likesCount + '</b></button><button class="post-action" data-action="view-comments" data-id="' + post.id + '">تعليقات ' + post.commentsCount + '</button></div></div></article>').join("") ||
+    '<div class="empty-state"><h2>ماكو مقاطع بعد</h2><p>انشر فيديو حتى يظهر هنا.</p><button class="btn-primary" data-action="new-post">نشر فيديو</button></div>'));
+}
 async function renderExplore() {
   const [users, posts] = await Promise.all([searchUsers(searchTerm || ""), getExplorePosts()]);
   showContent('<div class="page-heading"><div><h1>استكشف</h1><p>اكتشف حسابات ومنشورات جديدة.</p></div></div><form id="search-form" class="search-form"><span>⌕</span><input name="query" value="' + esc(searchTerm) + '" placeholder="ابحث عن اسم مستخدم أو شخص أو منشور"><button class="btn-primary" type="submit">بحث</button></form><section class="search-results"><h2>الحسابات</h2>' + (users.map(userRow).join("") || '<p class="muted">ما لقينا حسابات مطابقة.</p>') + '</section><section class="explore-posts"><h2>منشورات المجتمع</h2><div class="explore-grid">' + posts.map(post => '<button class="explore-tile" data-action="open-profile" data-id="' + post.user_id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,90)) + '</span>') + '</button>').join("") + '</div></section>');
@@ -256,7 +268,9 @@ async function searchUsers(query) {
   return (data || []).map(user => ({ ...user, following: set.has(user.id) }));
 }
 async function getExplorePosts() {
-  const { data, error } = await supabase.from("posts").select("*").order("created_at", { ascending: false }).limit(30);
+  let request = supabase.from("posts").select("*").order("created_at", { ascending: false }).limit(30);
+  if (searchTerm.trim()) request = request.ilike("caption", "%" + searchTerm.trim().replace(/[%,()]/g, "") + "%");
+  const { data, error } = await request;
   if (error) throw error;
   return enrichPosts(data || []);
 }
@@ -280,7 +294,7 @@ async function renderProfile(userId) {
   const isFollowing = !!followResult.data;
   const avatar = avatarUrl(user.avatar_path);
   const posts = await enrichPosts(postsResult.data || []);
-  showContent('<div class="profile-page"><section class="profile-header"><div class="profile-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(user.display_name)) + '</div><div class="profile-info"><div class="profile-title"><h1>' + esc(user.username) + '</h1>' + (mine ? '<button class="btn-secondary" data-action="edit-profile">تعديل الملف</button>' : '<button class="' + (isFollowing ? "btn-secondary" : "btn-primary") + '" data-action="follow" data-id="' + user.id + '" data-following="' + isFollowing + '">' + (isFollowing ? "إلغاء المتابعة" : "متابعة") + '</button><button class="btn-secondary" data-action="message-user" data-id="' + user.id + '">رسالة</button>') + '</div><div class="profile-stats"><span><b>' + posts.length + '</b> منشور</span><span><b>' + (followersResult.count || 0) + '</b> متابع</span><span><b>' + (followingResult.count || 0) + '</b> يتابع</span></div><strong>' + esc(user.display_name) + '</strong><p>' + esc(user.bio || "لا توجد نبذة بعد.") + '</p>' + (user.website ? '<a class="profile-website" href="' + esc(user.website) + '" target="_blank" rel="noopener noreferrer">' + esc(user.website) + '</a>' : '') + '</div></section><div class="profile-tabs"><span>▦ المنشورات</span></div><div class="profile-grid">' + posts.map(post => '<button class="profile-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,110)) + '</span>') + '</button>').join("") + '</div>' + (!posts.length ? '<div class="empty-state"><h2>ماكو منشورات بعد</h2><p>' + (mine ? "شارك أول منشور ويا مجتمعك." : "هذا الحساب ما نشر أي منشور بعد.") + '</p>' + (mine ? '<button class="btn-primary" data-action="new-post">إنشاء منشور</button>' : '') + '</div>' : '') + '</div>');
+  showContent('<div class="profile-page"><section class="profile-header"><div class="profile-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(user.display_name)) + '</div><div class="profile-info"><div class="profile-title"><h1>' + esc(user.username) + '</h1>' + (mine ? '<button class="btn-secondary" data-action="edit-profile">تعديل الملف</button>' : '<button class="' + (isFollowing ? "btn-secondary" : "btn-primary") + '" data-action="follow" data-id="' + user.id + '" data-following="' + isFollowing + '">' + (isFollowing ? "إلغاء المتابعة" : "متابعة") + '</button><button class="btn-secondary" data-action="message-user" data-id="' + user.id + '">رسالة</button>') + '</div><div class="profile-stats"><span><b>' + posts.length + '</b> منشور</span><span><b>' + (followersResult.count || 0) + '</b> متابع</span><span><b>' + (followingResult.count || 0) + '</b> يتابع</span></div><strong>' + esc(user.display_name) + '</strong><p>' + esc(user.bio || "لا توجد نبذة بعد.") + '</p>' + (user.website && /^https?:\\/\\//i.test(user.website) ? '<a class="profile-website" href="' + esc(user.website) + '" target="_blank" rel="noopener noreferrer">' + esc(user.website) + '</a>' : '') + '</div></section><div class="profile-tabs"><span>▦ المنشورات</span></div><div class="profile-grid">' + posts.map(post => '<button class="profile-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,110)) + '</span>') + '</button>').join("") + '</div>' + (!posts.length ? '<div class="empty-state"><h2>ماكو منشورات بعد</h2><p>' + (mine ? "شارك أول منشور ويا مجتمعك." : "هذا الحساب ما نشر أي منشور بعد.") + '</p>' + (mine ? '<button class="btn-primary" data-action="new-post">إنشاء منشور</button>' : '') + '</div>' : '') + '</div>');
 }
 async function renderNotifications() {
   const { data, error } = await supabase.from("notifications").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false }).limit(60);
@@ -679,6 +693,11 @@ async function onSubmit(event) {
       const display_name = String(data.get("display_name") || "").trim();
       const bio = String(data.get("bio") || "").trim();
       const website = String(data.get("website") || "").trim();
+      if (website) {
+        let parsed;
+        try { parsed = new URL(website); } catch { throw new Error("رابط الموقع غير صالح."); }
+        if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("استخدم رابطاً يبدأ بـ https:// أو http://");
+      }
       const { data: updated, error } = await supabase.from("profiles").update({
         display_name, bio, website: website || null, avatar_path: avatarPath, updated_at: new Date().toISOString()
       }).eq("id", session.user.id).select("*").single();
