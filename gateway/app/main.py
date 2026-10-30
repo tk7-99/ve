@@ -1,11 +1,13 @@
 import asyncio
 import json
 import secrets
+import os
 from contextlib import asynccontextmanager
 from typing import Annotated
 import asyncpg
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from .config import Settings
@@ -27,6 +29,16 @@ async def lifespan(app):
 
 app = FastAPI(title='DAZZA Identity Gateway', version='0.1.0', lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)
+web_origins = [origin.strip() for origin in os.getenv('WEB_ORIGINS', '').split(',') if origin.strip()]
+if web_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=web_origins,
+        allow_credentials=False,
+        allow_methods=['GET', 'POST', 'OPTIONS'],
+        allow_headers=['Authorization', 'Content-Type'],
+        max_age=600,
+    )
 
 class Start(BaseModel):
     phone: str = Field(min_length=6, max_length=24)
