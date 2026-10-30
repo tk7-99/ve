@@ -71,13 +71,19 @@ jobs:
       - name: Test
         working-directory: mobile
         run: flutter test
-      - name: Build debug APK when service URLs are configured
-        if: ${{ vars.DAZZA_API_URL != '' && vars.DAZZA_MATRIX_URL != '' }}
+      - name: Compile debug APK
         working-directory: mobile
+        env:
+          DAZZA_API_URL: ${{ vars.DAZZA_API_URL }}
+          DAZZA_MATRIX_URL: ${{ vars.DAZZA_MATRIX_URL }}
         run: |
+          API_URL="$DAZZA_API_URL"
+          MATRIX_URL="$DAZZA_MATRIX_URL"
+          if [ -z "$API_URL" ]; then API_URL="https://api.invalid"; fi
+          if [ -z "$MATRIX_URL" ]; then MATRIX_URL="https://matrix.invalid"; fi
           flutter build apk --debug \
-            --dart-define=DAZZA_API_URL=${{ vars.DAZZA_API_URL }} \
-            --dart-define=DAZZA_MATRIX_URL=${{ vars.DAZZA_MATRIX_URL }}
+            --dart-define=DAZZA_API_URL="$API_URL" \
+            --dart-define=DAZZA_MATRIX_URL="$MATRIX_URL"
       - name: Upload debug APK
         if: ${{ vars.DAZZA_API_URL != '' && vars.DAZZA_MATRIX_URL != '' }}
         uses: actions/upload-artifact@v4
