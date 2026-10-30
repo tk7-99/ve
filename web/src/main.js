@@ -120,6 +120,11 @@ async function enter(nextSession) {
   loadSuggestions();
   await navigate("feed");
   startRealtime();
+  const linkedPost = new URLSearchParams(location.search).get("post");
+  if (linkedPost) {
+    await renderPostModal(linkedPost);
+    history.replaceState({}, "", location.pathname);
+  }
 }
 async function boot() {
   root.addEventListener("click", onClick);
@@ -129,13 +134,11 @@ async function boot() {
   const { data } = await supabase.auth.getSession();
   if (data.session) await enter(data.session);
   else authView("login");
-  supabase.auth.onAuthStateChange((event, nextSession) => {
+  supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_OUT") {
       session = null; profile = null; isAdmin = false; activeConversation = null;
       if (liveChannel) supabase.removeChannel(liveChannel);
       authView("login");
-    } else if (event === "SIGNED_IN" && nextSession && !profile) {
-      enter(nextSession).catch(error => console.error(error));
     }
   });
 }
@@ -307,8 +310,8 @@ async function renderNotifications() {
   showContent('<div class="page-heading"><div><h1>الإشعارات</h1><p>تفاعلات الناس وياك.</p></div><button class="link-btn" data-action="mark-notifications">تعليم الكل كمقروء</button></div><section class="notification-list">' + (rows.map(row => {
     const actor = map.get(row.actor_id) || {};
     const avatar = avatarUrl(actor.avatar_path);
-    const text = row.type === "like" ? "أعجب بمنشورك" : row.type === "comment" ? "علّق على منشورك" : "بدأ بمتابعتك";
-    return '<button class="notification-row ' + (!row.is_read ? "unread" : "") + '" data-action="notification-open" data-post="' + (row.post_id || "") + '" data-id="' + row.id + '"><span class="avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(actor.display_name)) + '</span><span><strong>' + esc(actor.display_name || actor.username || "مستخدم") + '</strong> ' + text + '<small>' + dateLabel(row.created_at) + '</small></span><i>' + (row.type === "follow" ? "＋" : row.type === "like" ? "♥" : "▢") + '</i></button>';
+    const text = row.type === "like" ? "أعجب بمنشورك" : row.type === "comment" ? "علّق على منشورك" : row.type === "message" ? "أرسل لك رسالة" : "بدأ بمتابعتك";
+    return '<button class="notification-row ' + (!row.is_read ? "unread" : "") + '" data-action="notification-open" data-post="' + (row.post_id || "") + '" data-conversation="' + (row.conversation_id || "") + '" data-id="' + row.id + '"><span class="avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(actor.display_name)) + '</span><span><strong>' + esc(actor.display_name || actor.username || "مستخدم") + '</strong> ' + text + '<small>' + dateLabel(row.created_at) + '</small></span><i>' + (row.type === "follow" ? "＋" : row.type === "like" ? "♥" : "▢") + '</i></button>';
   }).join("") || '<div class="empty-state"><h2>ماكو إشعارات</h2><p>راح تظهر هنا التفاعلات الجديدة.</p></div>') + '</section>');
   await supabase.from("notifications").update({ is_read: true }).eq("user_id", session.user.id).eq("is_read", false);
   loadNotificationBadge();
@@ -583,27 +586,31 @@ async function onClick(event) {
     return;
   }
   if (action === "share-post") {
-    const url = location.origin + "/?post=" + encodeURIComponent(node.dataset.id);
+    const url = location.origin + location.pathname + "?post=" + encodeURIComponent(node.dataset.id);
     try { await navigator.clipboard.writeText(url); notice("تم نسخ رابط المنشور."); }
     catch { notice(url); }
     return;
   }
   if (action === "post-menu") {
-    const post = feedPosts.find(item => item.id === node.dataset.id);
-    if (post?.user_id === session.user.id && confirm("تحذف هذا المنشور؟")) {
+    const { data: post, error: postError } = await supabase.from("posts").select("id,user_id").eq("id", node.dataset.id).maybeSingle();
+    if (postError) return notice(postError.message, "error");
+    if (!post) return notice("هذا المنشور لم يعد موجوداً.", "error");
+    if (post.user_id === session.user.id && confirm("تحذف هذا المنشور؟")) {
       const { error } = await supabase.from("posts").delete().eq("id", post.id);
-      if (error) notice(error.message, "error"); else { notice("تم حذف المنشور."); await navigate(currentView); }
-    } else if (post && post.user_id !== session.user.id) {
+      if (error) notice(error.message, "error"); else { closeModal(); notice("تم حذف المنشور."); await navigate(currentView); }
+    } else if (post.user_id !== session.user.id) {
       if (confirm("تريد الإبلاغ عن هذا المنشور؟")) notice("وصلنا تنبيهك. نظام البلاغات المتكامل قيد الإعداد.");
     }
     return;
   }
   if (action === "notification-open") {
     await supabase.from("notifications").update({ is_read: true }).eq("id", node.dataset.id);
-    if (node.dataset.post) {
-      const { data } = await supabase.from("posts").select("user_id").eq("id", node.dataset.post).maybeSingle();
-      if (data) return navigate("profile", data.user_id);
+    loadNotificationBadge();
+    if (node.dataset.conversation) {
+      activeConversation = node.dataset.conversation;
+      return navigate("messages");
     }
+    if (node.dataset.post) return renderPostModal(node.dataset.post);
     return navigate("notifications");
   }
   if (action === "mark-notifications") {
