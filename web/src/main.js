@@ -49,6 +49,8 @@ function applyTheme() {
   const theme = storageGet("dazza-theme", "midnight");
   document.documentElement.dataset.theme = theme;
   document.body.dataset.theme = theme;
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta)meta.setAttribute("content",theme==="daylight"?"#f3f6fb":"#080b13");
 }
 
 const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({
@@ -220,6 +222,9 @@ async function boot() {
   window.addEventListener("offline", updateNetworkBadge);
   document.addEventListener("keydown", onGameKeydown);
   updateNetworkBadge();
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(error => console.warn("PWA offline shell unavailable:", error)));
+  }
   const { data, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) console.warn("Session restore:", sessionError);
   if (data.session) await enter(data.session);
