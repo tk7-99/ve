@@ -426,9 +426,18 @@ async function openStory(storyId) {
     const alreadyViewed = await supabase.from("story_views").select("story_id").eq("story_id", story.id).eq("viewer_id", session.user.id).maybeSingle();
     if (!alreadyViewed.data) await supabase.from("story_views").insert({ story_id: story.id, viewer_id: session.user.id });
   }
+  const { data: siblings } = await supabase.from("stories").select("id").eq("user_id", story.user_id).gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
+  const storyList = siblings || [];
+  const index = storyList.findIndex(item => item.id === story.id);
+  const previous = index > 0 ? storyList[index - 1].id : "";
+  const next = index >= 0 && index < storyList.length - 1 ? storyList[index + 1].id : "";
   const media = publicUrl(story.media_path);
-  const element = story.media_type === "video" ? '<video class="story-media" src="' + esc(media) + '" controls autoplay playsinline></video>' : '<img class="story-media" src="' + esc(media) + '" alt="قصة">';
-  openModal('<div class="story-viewer"><header><span>' + esc(author?.display_name || author?.username || "قصة") + '</span><button class="close-btn" data-action="close-modal">×</button></header>' + element + (story.caption ? '<p>' + esc(story.caption) + '</p>' : '') + '<small>' + dateLabel(story.created_at) + '</small></div>');
+  const element = story.media_type === "video"
+    ? '<video class="story-media" src="' + esc(media) + '" controls autoplay playsinline></video>'
+    : '<img class="story-media" src="' + esc(media) + '" alt="قصة">';
+  openModal('<div class="story-viewer"><header><button class="story-step" data-action="previous-story" data-id="' + previous + '" ' + (!previous ? "disabled" : "") + '>‹</button><span>' + esc(author?.display_name || author?.username || "قصة") + '</span><button class="close-btn" data-action="close-modal">×</button></header>' +
+    '<div class="story-stage">' + element + '</div>' + (story.caption ? '<p>' + esc(story.caption) + '</p>' : '') +
+    '<footer><small>' + dateLabel(story.created_at) + ' · ' + (index + 1) + ' / ' + storyList.length + '</small><button class="story-step" data-action="next-story" data-id="' + next + '" ' + (!next ? "disabled" : "") + '>›</button></footer></div>');
 }
 
 async function renderComments(postId) {
@@ -600,6 +609,10 @@ async function onClick(event) {
     return;
   }
   if (action === "open-story") return openStory(node.dataset.id);
+  if (action === "previous-story" || action === "next-story") {
+    if (node.dataset.id) return openStory(node.dataset.id);
+    return;
+  }
   if (action === "view-comments") return renderComments(node.dataset.id);
   if (action === "focus-comment") {
     const form = $('form[data-post="' + node.dataset.id + '"]');
