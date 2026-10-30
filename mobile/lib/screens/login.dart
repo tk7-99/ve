@@ -95,7 +95,7 @@ class _LoginPageState extends State<LoginPage> {
         if (challenge == null)
           FilledButton(onPressed: busy ? null : start, child: Text(s.text('دز رمز التحقق للبريد', 'Send code to email'))),
         if (challenge != null) ...[
-          Text(s.text('أرسلنا رمزاً إلى \${email.text.trim()}', 'We sent a code to \${email.text.trim()}')),
+          Text(s.text('أرسلنا رمزاً إلى ${email.text.trim()}', 'We sent a code to ${email.text.trim()}')),
           const SizedBox(height: 12),
           TextField(controller: code, enabled: !busy, keyboardType: TextInputType.number, autofillHints: const [AutofillHints.oneTimeCode], inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], decoration: InputDecoration(labelText: s.text('رمز التحقق المكوّن من 6 أرقام', '6-digit verification code'))),
           const SizedBox(height: 12),
@@ -104,7 +104,7 @@ class _LoginPageState extends State<LoginPage> {
           TextField(controller: username, enabled: !busy, textDirection: TextDirection.ltr, decoration: InputDecoration(labelText: s.text('اسم المستخدم', 'Username'), helperText: s.text('للحساب الجديد فقط؛ الحساب الحالي يحتفظ باسمه.', 'New accounts only; existing usernames are preserved.'))),
           const SizedBox(height: 20),
           FilledButton(onPressed: busy ? null : verify, child: Text(s.text('تحقق وادخل', 'Verify and sign in'))),
-          TextButton(onPressed: busy || cooldown > 0 ? null : start, child: Text(cooldown > 0 ? '\${s.text('إعادة الإرسال بعد', 'Resend in')} $cooldown' : s.text('إعادة إرسال الرمز', 'Resend code'))),
+          TextButton(onPressed: busy || cooldown > 0 ? null : start, child: Text(cooldown > 0 ? '${s.text('إعادة الإرسال بعد', 'Resend in')} $cooldown' : s.text('إعادة إرسال الرمز', 'Resend code'))),
           TextButton(onPressed: busy ? null : () => setState(() { challenge = null; code.clear(); }), child: Text(s.text('تغيير البريد الإلكتروني', 'Change email address'))),
         ],
         if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
