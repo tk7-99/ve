@@ -299,7 +299,25 @@ async function renderProfile(userId) {
   const isFollowing = !!followResult.data;
   const avatar = avatarUrl(user.avatar_path);
   const posts = await enrichPosts(postsResult.data || []);
-  showContent('<div class="profile-page"><section class="profile-header"><div class="profile-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(user.display_name)) + '</div><div class="profile-info"><div class="profile-title"><h1>' + esc(user.username) + '</h1>' + (mine ? '<button class="btn-secondary" data-action="edit-profile">تعديل الملف</button>' : '<button class="' + (isFollowing ? "btn-secondary" : "btn-primary") + '" data-action="follow" data-id="' + user.id + '" data-following="' + isFollowing + '">' + (isFollowing ? "إلغاء المتابعة" : "متابعة") + '</button><button class="btn-secondary" data-action="message-user" data-id="' + user.id + '">رسالة</button>') + '</div><div class="profile-stats"><span><b>' + posts.length + '</b> منشور</span><span><b>' + (followersResult.count || 0) + '</b> متابع</span><span><b>' + (followingResult.count || 0) + '</b> يتابع</span></div><strong>' + esc(user.display_name) + '</strong><p>' + esc(user.bio || "لا توجد نبذة بعد.") + '</p>' + (user.website && (user.website.startsWith("https://") || user.website.startsWith("http://")) ? '<a class="profile-website" href="' + esc(user.website) + '" target="_blank" rel="noopener noreferrer">' + esc(user.website) + '</a>' : '') + '</div></section><div class="profile-tabs"><span>▦ المنشورات</span></div><div class="profile-grid">' + posts.map(post => '<button class="profile-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,110)) + '</span>') + '</button>').join("") + '</div>' + (!posts.length ? '<div class="empty-state"><h2>ماكو منشورات بعد</h2><p>' + (mine ? "شارك أول منشور ويا مجتمعك." : "هذا الحساب ما نشر أي منشور بعد.") + '</p>' + (mine ? '<button class="btn-primary" data-action="new-post">إنشاء منشور</button>' : '') + '</div>' : '') + '</div>');
+  showContent('<div class="profile-page"><section class="profile-header"><div class="profile-avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(user.display_name)) + '</div><div class="profile-info"><div class="profile-title"><h1>' + esc(user.username) + '</h1>' + (mine ? '<button class="btn-secondary" data-action="edit-profile">تعديل الملف</button>' : '<button class="' + (isFollowing ? "btn-secondary" : "btn-primary") + '" data-action="follow" data-id="' + user.id + '" data-following="' + isFollowing + '">' + (isFollowing ? "إلغاء المتابعة" : "متابعة") + '</button><button class="btn-secondary" data-action="message-user" data-id="' + user.id + '">رسالة</button>') + '</div><div class="profile-stats"><span><b>' + posts.length + '</b> منشور</span><button data-action="open-follow-list" data-type="followers" data-id="' + user.id + '"><b>' + (followersResult.count || 0) + '</b> متابع</button><button data-action="open-follow-list" data-type="following" data-id="' + user.id + '"><b>' + (followingResult.count || 0) + '</b> يتابع</button></div><strong>' + esc(user.display_name) + '</strong><p>' + esc(user.bio || "لا توجد نبذة بعد.") + '</p>' + (user.website && (user.website.startsWith("https://") || user.website.startsWith("http://")) ? '<a class="profile-website" href="' + esc(user.website) + '" target="_blank" rel="noopener noreferrer">' + esc(user.website) + '</a>' : '') + '</div></section><div class="profile-tabs"><span>▦ المنشورات</span></div><div class="profile-grid">' + posts.map(post => '<button class="profile-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,110)) + '</span>') + '</button>').join("") + '</div>' + (!posts.length ? '<div class="empty-state"><h2>ماكو منشورات بعد</h2><p>' + (mine ? "شارك أول منشور ويا مجتمعك." : "هذا الحساب ما نشر أي منشور بعد.") + '</p>' + (mine ? '<button class="btn-primary" data-action="new-post">إنشاء منشور</button>' : '') + '</div>' : '') + '</div>');
+}
+async function renderFollowList(userId, type) {
+  const isFollowers = type === "followers";
+  const query = isFollowers
+    ? supabase.from("follows").select("follower_id").eq("following_id", userId).eq("status", "accepted")
+    : supabase.from("follows").select("following_id").eq("follower_id", userId).eq("status", "accepted");
+  const { data, error } = await query.order("created_at", { ascending: false }).limit(150);
+  if (error) return notice(error.message, "error");
+  const ids = (data || []).map(row => isFollowers ? row.follower_id : row.following_id);
+  const people = ids.length ? await supabase.from("profiles").select("id,username,display_name,avatar_path,bio").in("id", ids) : { data: [], error: null };
+  if (people.error) return notice(people.error.message, "error");
+  const following = ids.length ? await supabase.from("follows").select("following_id").eq("follower_id", session.user.id).in("following_id", ids) : { data: [] };
+  if (following.error) return notice(following.error.message, "error");
+  const followingSet = new Set((following.data || []).map(row => row.following_id));
+  const profiles = new Map((people.data || []).map(person => [person.id, person]));
+  const users = ids.map(id => profiles.get(id)).filter(Boolean).map(user => ({ ...user, following: followingSet.has(user.id) }));
+  openModal('<header class="modal-head"><h2>' + (isFollowers ? "المتابعون" : "يتابع") + '</h2><button data-action="close-modal" class="close-btn">×</button></header>' +
+    '<div class="follow-list">' + (users.map(userRow).join("") || '<p class="muted">ماكو حسابات بهالقائمة بعد.</p>') + '</div>');
 }
 async function renderNotifications() {
   const { data, error } = await supabase.from("notifications").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false }).limit(60);
@@ -563,6 +581,7 @@ async function onClick(event) {
   if (action === "my-profile") return navigate("profile", session.user.id);
   if (action === "open-profile") return navigate("profile", node.dataset.id);
   if (action === "follow") return followUser(node.dataset.id, node);
+  if (action === "open-follow-list") return renderFollowList(node.dataset.id, node.dataset.type);
   if (action === "toggle-like") return toggleLike(node);
   if (action === "toggle-save") return toggleBookmark(node);
   if (action === "feed-filter") {
