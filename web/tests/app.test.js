@@ -80,9 +80,7 @@ test("profile music and social links are saved and rendered through safe HTTP UR
   assert.match(source, /social_links/);
   assert.match(source, /safeProfileUrl/);
   assert.match(source, /rel="noopener noreferrer"/);
-  for (const platform of ["instagram","tiktok","youtube","facebook","x","twitch","discord"]) {
-    assert.ok(source.includes('"social_' + platform + '"') || source.includes('social_' + platform));
-  }
+  assert.match(source, /"instagram","tiktok","youtube","facebook","x","twitch","discord"/);
 });
 
 test("unified account menu and world catalog are reachable from navigation", async () => {
