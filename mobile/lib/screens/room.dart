@@ -24,6 +24,7 @@ class _ChatPageState extends State<ChatPage> {
   bool loadFailed = false;
   String search = '';
   Timer? typing;
+  final Map<String, Future<MatrixFile?>> attachmentCache = {};
   Session get s => widget.session;
   Room get room => widget.room;
   @override
@@ -116,14 +117,28 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     final id = await room.sendFileEvent(
-      MatrixFile(bytes: file.bytes!, name: file.name),
+      MatrixFile.fromMimeType(
+        bytes: file.bytes!,
+        name: file.name,
+        mimeType: mimeTypeForName(file.name),
+      ),
       inReplyTo: reply,
     );
     if (id == null) throw const AppFailure('send_failed');
     if (mounted) setState(() => reply = null);
   });
+  Future<MatrixFile?> attachment(Event event) =>
+      attachmentCache.putIfAbsent(event.eventId, () async {
+        try {
+          return await event.downloadAndDecryptAttachment();
+        } catch (_) {
+          return null;
+        }
+      });
+
   Future<void> download(Event event) => action(() async {
-    final file = await event.downloadAndDecryptAttachment();
+    final file = await attachment(event);
+    if (file == null) throw const AppFailure('attachment_download_failed');
     if (!mounted) return;
     final box = context.findRenderObject() as RenderBox?;
     await SharePlus.instance.share(
@@ -194,6 +209,49 @@ class _ChatPageState extends State<ChatPage> {
       await room.invite(await s.resolve(name));
     });
   }
+
+
+  Widget _imageAttachment(Event event) => FutureBuilder<MatrixFile?>(
+    future: attachment(event),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const SizedBox(
+          width: 220,
+          height: 160,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      final media = snapshot.data;
+      if (media == null) {
+        return TextButton.icon(
+          onPressed: () {
+            setState(() => attachmentCache.remove(event.eventId));
+          },
+          icon: const Icon(Icons.refresh),
+          label: Text(s.text('تعذّر تحميل الصورة — أعد المحاولة', 'Image failed to load — retry')),
+        );
+      }
+      return GestureDetector(
+        onTap: busy ? null : () => download(event),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.memory(
+            media.bytes,
+            width: 260,
+            fit: BoxFit.cover,
+            cacheWidth: 900,
+            errorBuilder: (_, _, _) => SizedBox(
+              width: 220,
+              height: 140,
+              child: Center(
+                child: Text(s.text('تعذّر عرض الصورة', 'Unable to display image')),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -318,7 +376,9 @@ class _ChatPageState extends State<ChatPage> {
                                       context,
                                     ).textTheme.labelSmall,
                                   ),
-                                if (file)
+                                if (event.messageType == MessageTypes.Image)
+                                  _imageAttachment(event)
+                                else if (file)
                                   TextButton.icon(
                                     onPressed: busy
                                         ? null
@@ -426,4 +486,28 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
+}
+
+ 
+String mimeTypeForName(String name) {
+  final extension = name.split('.').last.toLowerCase();
+  return switch (extension) {
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+    'bmp' => 'image/bmp',
+    'heic' => 'image/heic',
+    'mp4' => 'video/mp4',
+    'mov' => 'video/quicktime',
+    'm4v' => 'video/x-m4v',
+    'mp3' => 'audio/mpeg',
+    'm4a' => 'audio/mp4',
+    'aac' => 'audio/aac',
+    'ogg' => 'audio/ogg',
+    'wav' => 'audio/wav',
+    'pdf' => 'application/pdf',
+    'txt' => 'text/plain',
+    _ => 'application/octet-stream',
+  };
 }
