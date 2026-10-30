@@ -92,3 +92,33 @@ test("unified account menu and world catalog are reachable from navigation", asy
   assert.equal(WORLD_PROJECTS.length, 100);
   assert.ok(WORLD_PROJECTS.every(item => item.owner && item.name && item.description));
 });
+
+
+test("social rooms, voice signaling and synchronized watch rooms are wired", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  assert.match(source, /configureSocialWorld/);
+  assert.match(source, /renderSocialWorld/);
+  assert.match(source, /handleSocialAction/);
+  assert.match(source, /handleSocialSubmit/);
+  assert.match(social, /dazza_room_members/);
+  assert.match(social, /config: \{ private: true/);
+  assert.match(social, /RTCPeerConnection/);
+  assert.match(social, /getUserMedia/);
+  assert.match(social, /watch-state/);
+  assert.match(social, /room-chat/);
+  assert.match(social, /quiz-state/);
+  const { getYouTubeVideoId } = await import("../src/social-world.js");
+  assert.equal(getYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://example.com/not-youtube"), "");
+});
+
+test("social room pages and challenge permissions are protected by RLS", async () => {
+  const migration = await readFile(new URL("../supabase/migrations/20261030080000_dazza_social_rooms_challenges.sql", import.meta.url), "utf8");
+  for (const table of ["dazza_rooms", "dazza_room_members", "dazza_room_messages", "dazza_challenges", "dazza_challenge_participants"]) {
+    assert.match(migration, new RegExp("alter table public\\." + table + " enable row level security"));
+  }
+  assert.match(migration, /dazza room members receive realtime/);
+  assert.match(migration, /dazza room members send realtime/);
+  assert.match(migration, /grant select, insert, update, delete on public\.dazza_rooms to authenticated/);
+});
