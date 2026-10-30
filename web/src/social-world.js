@@ -123,7 +123,7 @@ function roomTopic(id) {
 }
 
 async function openSocialRoom(roomId) {
-  if (activeRoom && activeRoom.id !== roomId) await closeRealtime();
+  if (activeRoom) await closeRealtime();
   const { data: room, error } = await runtime.supabase.from("dazza_rooms").select("*").eq("id", roomId).maybeSingle();
   if (error) throw error;
   if (!room || room.status !== "open" || !room.expires_at || new Date(room.expires_at).getTime() <= Date.now()) {
@@ -151,6 +151,9 @@ async function openSocialRoom(roomId) {
     await renderRoomPage();
     await connectRoomChannel();
   } catch (error) {
+    const failedRoomId = activeRoom?.id || room.id;
+    await runtime.supabase.from("dazza_room_members").delete()
+      .eq("room_id", failedRoomId).eq("user_id", runtime.user.id);
     await closeRealtime();
     activeRoom = null;
     await renderSocialWorld();
@@ -525,20 +528,26 @@ async function loadRoomChat() {
   }
 }
 
-async function leaveSocialRoom() {
+async function leaveSocialRoom({ refresh = true, announce = true } = {}) {
   if (!activeRoom) return;
   const room = activeRoom;
   if (room.host_id === runtime.user.id) {
-    await roomChannel?.send({ type: "broadcast", event: "room-closed", payload: { by: runtime.user.id } });
-    await runtime.supabase.from("dazza_rooms").update({ status: "closed", updated_at: new Date().toISOString() }).eq("id", room.id);
-    await runtime.supabase.from("dazza_room_members").delete().eq("room_id", room.id);
+    try { await roomChannel?.send({ type: "broadcast", event: "room-closed", payload: { by: runtime.user.id } }); }
+    catch (error) { console.warn("Room close broadcast failed:", error); }
+    const { error: closeError } = await runtime.supabase.from("dazza_rooms")
+      .update({ status: "closed", updated_at: new Date().toISOString() }).eq("id", room.id);
+    if (closeError) throw closeError;
+    const { error: membersError } = await runtime.supabase.from("dazza_room_members").delete().eq("room_id", room.id);
+    if (membersError) throw membersError;
   } else {
-    await runtime.supabase.from("dazza_room_members").delete().eq("room_id", room.id).eq("user_id", runtime.user.id);
+    const { error } = await runtime.supabase.from("dazza_room_members").delete()
+      .eq("room_id", room.id).eq("user_id", runtime.user.id);
+    if (error) throw error;
   }
   await closeRealtime();
   activeRoom = null;
-  notify(room.host_id === runtime.user.id ? "تم إغلاق الغرفة." : "غادرت الغرفة.");
-  await renderSocialWorld();
+  if (announce) notify(room.host_id === runtime.user.id ? "تم إغلاق الغرفة." : "غادرت الغرفة.");
+  if (refresh) await renderSocialWorld();
 }
 
 async function heartbeatRoom() {
@@ -730,7 +739,7 @@ function ensureYouTubeAPI() {
       resolve(window.YT);
     };
     let script = $('script[src="https://www.youtube.com/iframe_api"]');
-      if (!script) {
+    if (!script) {
       script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       script.async = true;
@@ -805,7 +814,17 @@ function renderRoomQuiz(state) {
 }
 
 export async function cleanupSocialWorld() {
-  await closeRealtime();
+  if (activeRoom) {
+    try {
+      await leaveSocialRoom({ refresh: false, announce: false });
+    } catch (error) {
+      console.warn("Could not close/leave the active room cleanly:", error);
+      await closeRealtime();
+      activeRoom = null;
+    }
+  } else {
+    await closeRealtime();
+  }
   activeRoom = null;
   roomMembers = [];
 }
