@@ -186,8 +186,12 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     recordingTimer?.cancel();
-    final path = await recorder.stop();
-    if (mounted) setState(() => isRecording = false);
+    String? path;
+    try {
+      path = await recorder.stop();
+    } finally {
+      if (mounted) setState(() => isRecording = false);
+    }
     if (path == null) throw const AppFailure('voice_record_failed');
     final file = File(path);
     try {
@@ -640,6 +644,7 @@ class _AudioAttachmentPlayer extends StatefulWidget {
 
 class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
   late final AudioPlayer player;
+  StreamSubscription<PlayerState>? playerSubscription;
   String? temporaryPath;
   bool loading = false;
   String? error;
@@ -648,6 +653,20 @@ class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
   void initState() {
     super.initState();
     player = AudioPlayer();
+    playerSubscription = player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        final path = temporaryPath;
+        temporaryPath = null;
+        if (path != null) unawaited(_deleteTemporaryFile(path));
+      }
+    });
+  }
+
+  Future<void> _deleteTemporaryFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   Future<void> toggle() async {
@@ -690,16 +709,10 @@ class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
 
   @override
   void dispose() {
+    playerSubscription?.cancel();
     unawaited(player.dispose());
     final path = temporaryPath;
-    if (path != null) {
-      unawaited(() async {
-        try {
-          final file = File(path);
-          if (await file.exists()) await file.delete();
-        } catch (_) {}
-      }());
-    }
+    if (path != null) unawaited(_deleteTemporaryFile(path));
     super.dispose();
   }
 
