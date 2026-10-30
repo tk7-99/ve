@@ -60,3 +60,37 @@ test("offline app shell never caches external Supabase requests", async () => {
   assert.match(sw, /if \(url\.origin !== self\.location\.origin\) return/);
   assert.match(sw, /self\.skipWaiting\(\)/);
 });
+
+test("messages stay in the active conversation and de-duplicate realtime delivery", () => {
+  const messages = between("function appendDmMessage(", "async function startDirectMessage(");
+  assert.match(messages, /data-message-id/);
+  assert.match(messages, /alreadyRendered/);
+  assert.match(messages, /append\(article\)/);
+  assert.doesNotMatch(messages, /await renderMessages\(\)/);
+  const submit = between('if (form.id === "dm-form") {', 'if (form.id === "search-form") {');
+  assert.match(submit, /form\.dataset\.sending === "true"/);
+  assert.match(submit, /\.insert\(/);
+  assert.match(submit, /appendDmMessage\(message\)/);
+  assert.doesNotMatch(submit, /await renderMessages\(\)/);
+  assert.match(source, /payload\.new\)\s*;/);
+});
+
+test("profile music and social links are saved and rendered through safe HTTP URLs", () => {
+  assert.match(source, /music_url/);
+  assert.match(source, /social_links/);
+  assert.match(source, /safeProfileUrl/);
+  assert.match(source, /rel="noopener noreferrer"/);
+  for (const platform of ["instagram","tiktok","youtube","facebook","x","twitch","discord"]) {
+    assert.ok(source.includes('"social_' + platform + '"') || source.includes('social_' + platform));
+  }
+});
+
+test("unified account menu and world catalog are reachable from navigation", async () => {
+  const shell = between("function shell()", "function navItem(");
+  assert.match(shell, /data-action="account-menu"/);
+  assert.match(shell, /data-view="world"/);
+  assert.doesNotMatch(shell, /data-action="logout"/);
+  const { WORLD_PROJECTS } = await import("../src/world-catalog.js");
+  assert.equal(WORLD_PROJECTS.length, 100);
+  assert.ok(WORLD_PROJECTS.every(item => item.owner && item.name && item.description));
+});
