@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:matrix/matrix.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
 import '../session.dart';
 import 'common.dart';
@@ -24,6 +29,12 @@ class _ChatPageState extends State<ChatPage> {
   bool loadFailed = false;
   String search = '';
   Timer? typing;
+  final Map<String, Future<MatrixFile?>> attachmentCache = {};
+  final AudioRecorder recorder = AudioRecorder();
+  Timer? recordingTimer;
+  int recordingSeconds = 0;
+  bool isRecording = false;
+  String? recordingPath;
   Session get s => widget.session;
   Room get room => widget.room;
   @override
@@ -61,6 +72,8 @@ class _ChatPageState extends State<ChatPage> {
     typing?.cancel();
     timeline?.cancelSubscriptions();
     input.dispose();
+    recordingTimer?.cancel();
+    unawaited(_cleanupRecorder());
     super.dispose();
   }
 
@@ -116,14 +129,111 @@ class _ChatPageState extends State<ChatPage> {
       return;
     }
     final id = await room.sendFileEvent(
-      MatrixFile(bytes: file.bytes!, name: file.name),
+      MatrixFile.fromMimeType(
+        bytes: file.bytes!,
+        name: file.name,
+        mimeType: mimeTypeForName(file.name),
+      ),
       inReplyTo: reply,
     );
     if (id == null) throw const AppFailure('send_failed');
     if (mounted) setState(() => reply = null);
   });
+
+  Future<void> _cleanupRecorder() async {
+    try {
+      if (isRecording) await recorder.cancel();
+    } catch (_) {}
+    try {
+      await recorder.dispose();
+    } catch (_) {}
+    final path = recordingPath;
+    if (path != null) {
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> toggleVoiceRecording() => action(() async {
+    if (!isRecording) {
+      s.requireEncryption(room);
+      if (!await recorder.hasPermission()) {
+        throw const AppFailure('microphone_permission_denied');
+      }
+      final directory = await getTemporaryDirectory();
+      final path = p.join(
+        directory.path,
+        'dazza-voice-${DateTime.now().microsecondsSinceEpoch}.m4a',
+      );
+      await recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 96000,
+          sampleRate: 44100,
+        ),
+        path: path,
+      );
+      recordingPath = path;
+      recordingSeconds = 0;
+      if (mounted) setState(() => isRecording = true);
+      recordingTimer?.cancel();
+      recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() => recordingSeconds++);
+      });
+      return;
+    }
+
+    recordingTimer?.cancel();
+    String? path;
+    try {
+      path = await recorder.stop();
+    } finally {
+      if (mounted) setState(() => isRecording = false);
+    }
+    if (path == null) throw const AppFailure('voice_record_failed');
+    final file = File(path);
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 20 * 1024 * 1024) {
+        throw const AppFailure('voice_too_large');
+      }
+      final id = await room.sendFileEvent(
+        MatrixFile.fromMimeType(
+          bytes: bytes,
+          name: 'voice_message_${recordingSeconds}s.m4a',
+          mimeType: 'audio/mp4',
+        ),
+        inReplyTo: reply,
+      );
+      if (id == null) throw const AppFailure('send_failed');
+      if (mounted) setState(() => reply = null);
+    } finally {
+      if (await file.exists()) await file.delete();
+      recordingPath = null;
+    }
+  });
+
+  Widget _audioAttachment(Event event) => _AudioAttachmentPlayer(
+    label: s.text('رسالة صوتية', 'Voice message'),
+    loadAttachment: () => attachment(event),
+    text: (arabic, english) => s.text(arabic, english),
+    onShare: () => download(event),
+  );
+
+  Future<MatrixFile?> attachment(Event event) =>
+      attachmentCache.putIfAbsent(event.eventId, () async {
+        try {
+          return await event.downloadAndDecryptAttachment();
+        } catch (_) {
+          return null;
+        }
+      });
+
   Future<void> download(Event event) => action(() async {
-    final file = await event.downloadAndDecryptAttachment();
+    final file = await attachment(event);
+    if (file == null) throw const AppFailure('attachment_download_failed');
     if (!mounted) return;
     final box = context.findRenderObject() as RenderBox?;
     await SharePlus.instance.share(
@@ -194,6 +304,49 @@ class _ChatPageState extends State<ChatPage> {
       await room.invite(await s.resolve(name));
     });
   }
+
+
+  Widget _imageAttachment(Event event) => FutureBuilder<MatrixFile?>(
+    future: attachment(event),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const SizedBox(
+          width: 220,
+          height: 160,
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      final media = snapshot.data;
+      if (media == null) {
+        return TextButton.icon(
+          onPressed: () {
+            setState(() => attachmentCache.remove(event.eventId));
+          },
+          icon: const Icon(Icons.refresh),
+          label: Text(s.text('تعذّر تحميل الصورة — أعد المحاولة', 'Image failed to load — retry')),
+        );
+      }
+      return GestureDetector(
+        onTap: busy ? null : () => download(event),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.memory(
+            media.bytes,
+            width: 260,
+            fit: BoxFit.cover,
+            cacheWidth: 900,
+            errorBuilder: (_, _, _) => SizedBox(
+              width: 220,
+              height: 140,
+              child: Center(
+                child: Text(s.text('تعذّر عرض الصورة', 'Unable to display image')),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -318,7 +471,11 @@ class _ChatPageState extends State<ChatPage> {
                                       context,
                                     ).textTheme.labelSmall,
                                   ),
-                                if (file)
+                                if (event.messageType == MessageTypes.Audio)
+                                  _audioAttachment(event)
+                                else if (event.messageType == MessageTypes.Image)
+                                  _imageAttachment(event)
+                                else if (file)
                                   TextButton.icon(
                                     onPressed: busy
                                         ? null
@@ -383,13 +540,28 @@ class _ChatPageState extends State<ChatPage> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   IconButton(
-                    onPressed: busy ? null : attach,
+                    onPressed: busy || isRecording ? null : attach,
                     tooltip: s.text('إرسال ملف', 'Send file'),
                     icon: const Icon(Icons.attach_file),
                   ),
+                  IconButton(
+                    onPressed: busy ? null : toggleVoiceRecording,
+                    tooltip: s.text(
+                      isRecording ? 'إيقاف التسجيل وإرساله' : 'تسجيل رسالة صوتية',
+                      isRecording ? 'Stop and send voice message' : 'Record a voice message',
+                    ),
+                    color: isRecording ? Theme.of(context).colorScheme.error : null,
+                    icon: Icon(isRecording ? Icons.stop_circle : Icons.mic_none),
+                  ),
+                  if (isRecording)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: Text('${recordingSeconds}s'),
+                    ),
                   Expanded(
                     child: TextField(
                       controller: input,
+                      enabled: !isRecording,
                       minLines: 1,
                       maxLines: 5,
                       onChanged: (_) {
@@ -414,7 +586,7 @@ class _ChatPageState extends State<ChatPage> {
                     ),
                   ),
                   IconButton.filled(
-                    onPressed: busy ? null : send,
+                    onPressed: busy || isRecording ? null : send,
                     tooltip: s.text('إرسال', 'Send'),
                     icon: const Icon(Icons.send_rounded),
                   ),
@@ -426,4 +598,179 @@ class _ChatPageState extends State<ChatPage> {
       ),
     );
   }
+}
+
+ 
+String mimeTypeForName(String name) {
+  final extension = name.split('.').last.toLowerCase();
+  return switch (extension) {
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+    'bmp' => 'image/bmp',
+    'heic' => 'image/heic',
+    'mp4' => 'video/mp4',
+    'mov' => 'video/quicktime',
+    'm4v' => 'video/x-m4v',
+    'mp3' => 'audio/mpeg',
+    'm4a' => 'audio/mp4',
+    'aac' => 'audio/aac',
+    'ogg' => 'audio/ogg',
+    'wav' => 'audio/wav',
+    'pdf' => 'application/pdf',
+    'txt' => 'text/plain',
+    _ => 'application/octet-stream',
+  };
+}
+
+
+class _AudioAttachmentPlayer extends StatefulWidget {
+  final String label;
+  final Future<MatrixFile?> Function() loadAttachment;
+  final String Function(String arabic, String english) text;
+  final VoidCallback onShare;
+
+  const _AudioAttachmentPlayer({
+    required this.label,
+    required this.loadAttachment,
+    required this.text,
+    required this.onShare,
+  });
+
+  @override
+  State<_AudioAttachmentPlayer> createState() => _AudioAttachmentPlayerState();
+}
+
+class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
+  late final AudioPlayer player;
+  StreamSubscription<PlayerState>? playerSubscription;
+  String? temporaryPath;
+  bool loading = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    player = AudioPlayer();
+    playerSubscription = player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        final path = temporaryPath;
+        temporaryPath = null;
+        if (path != null) unawaited(_deleteTemporaryFile(path));
+      }
+    });
+  }
+
+  Future<void> _deleteTemporaryFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+  }
+
+  Future<void> toggle() async {
+    if (loading) return;
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      if (player.playing) {
+        await player.pause();
+        return;
+      }
+      if (temporaryPath == null) {
+        final media = await widget.loadAttachment();
+        if (media == null) throw StateError('attachment unavailable');
+        final directory = await getTemporaryDirectory();
+        final extension = audioExtensionForMime(media.mimeType);
+        final file = File(p.join(
+          directory.path,
+          'dazza-playback-${DateTime.now().microsecondsSinceEpoch}$extension',
+        ));
+        await file.writeAsBytes(media.bytes, flush: true);
+        temporaryPath = file.path;
+        await player.setFilePath(file.path);
+      }
+      if (player.processingState == ProcessingState.completed) {
+        await player.seek(Duration.zero);
+      }
+      unawaited(player.play());
+    } catch (_) {
+      error = widget.text(
+        'تعذّر تشغيل الرسالة الصوتية.',
+        'Could not play this voice message.',
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    final subscription = playerSubscription;
+    if (subscription != null) unawaited(subscription.cancel());
+    final path = temporaryPath;
+    unawaited(() async {
+      await player.dispose();
+      if (path != null) await _deleteTemporaryFile(path);
+    }());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      IconButton(
+        onPressed: loading ? null : toggle,
+        icon: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : StreamBuilder<PlayerState>(
+                stream: player.playerStateStream,
+                builder: (context, snapshot) {
+                  final playing = snapshot.data?.playing ?? false;
+                  final completed = snapshot.data?.processingState ==
+                      ProcessingState.completed;
+                  return Icon(
+                    completed
+                        ? Icons.replay
+                        : playing
+                            ? Icons.pause_circle
+                            : Icons.play_circle,
+                  );
+                },
+              ),
+      ),
+      Flexible(
+        child: Text(
+          error ?? widget.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      IconButton(
+        onPressed: loading ? null : widget.onShare,
+        tooltip: widget.text('مشاركة الملف الصوتي', 'Share audio file'),
+        icon: const Icon(Icons.share_outlined, size: 18),
+      ),
+    ],
+  );
+}
+
+String audioExtensionForMime(String mimeType) {
+  return switch (mimeType.toLowerCase()) {
+    'audio/mp4' || 'audio/x-m4a' => '.m4a',
+    'audio/mpeg' || 'audio/mp3' => '.mp3',
+    'audio/aac' => '.aac',
+    'audio/ogg' || 'application/ogg' => '.ogg',
+    'audio/wav' || 'audio/x-wav' => '.wav',
+    'audio/webm' => '.webm',
+    _ => '.audio',
+  };
 }

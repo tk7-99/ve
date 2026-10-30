@@ -29,9 +29,8 @@ MATRIX_SERVER_NAME={a.matrix_domain}
 REGISTRATION_SHARED_SECRET={registration}
 IDENTITY_SECRET={identity}
 PASSWORD_SECRET={login}
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_VERIFY_SERVICE_SID=
+RESEND_API_KEY=
+RESEND_FROM=
 """)
 config = root / 'infra/generated'
 config.mkdir(exist_ok=True)
@@ -71,4 +70,4 @@ rc_login:
   address: {{per_second: 0.2, burst_count: 10}}
   account: {{per_second: 0.1, burst_count: 5}}
 """)
-print('DAZZA local configuration created. Fill the three Twilio variables privately before starting.')
+print('DAZZA local configuration created. Add RESEND_API_KEY and RESEND_FROM privately before starting.')

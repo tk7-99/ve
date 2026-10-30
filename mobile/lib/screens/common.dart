@@ -4,9 +4,33 @@ import '../session.dart';
 void showFailure(BuildContext context, Session s, Object error) {
   final code = error is AppFailure ? error.code : '';
   final message = switch (code) {
-    'sms_not_configured' => s.text(
-      'خدمة رسائل التحقق لم تُفعّل بعد.',
-      'SMS verification is not configured.',
+    'email_not_configured' => s.text(
+      'خدمة البريد لم تُفعّل على الخادم بعد.',
+      'Email delivery is not configured on the server yet.',
+    ),
+    'email_send_failed' || 'email_provider_error' => s.text(
+      'تعذّر إرسال الرمز إلى بريدك. حاول لاحقاً.',
+      'The verification email could not be sent. Try again later.',
+    ),
+    'microphone_permission_denied' => s.text(
+      'اسمح لتطبيق دَزّة باستخدام الميكروفون حتى تسجّل رسالة صوتية.',
+      'Allow DAZZA to use the microphone to record a voice message.',
+    ),
+    'voice_record_failed' => s.text(
+      'تعذّر إكمال تسجيل الرسالة الصوتية.',
+      'The voice recording could not be completed.',
+    ),
+    'voice_too_large' => s.text(
+      'التسجيل تجاوز الحد الأعلى البالغ 20 ميغابايت.',
+      'The recording exceeded the 20 MB limit.',
+    ),
+    'attachment_download_failed' => s.text(
+      'تعذّر تنزيل المرفق أو فك تشفيره.',
+      'The attachment could not be downloaded or decrypted.',
+    ),
+    'profile_required' => s.text(
+      'هذا حساب جديد. اكتب الاسم واسم المستخدم حتى نكمل التسجيل.',
+      'This is a new account. Enter your name and username to finish registration.',
     ),
     'invalid_or_expired_code' || 'challenge_expired' => s.text(
       'الرمز غير صحيح أو انتهت صلاحيته.',
@@ -16,7 +40,7 @@ void showFailure(BuildContext context, Session s, Object error) {
       'اسم المستخدم محجوز. اختر اسماً آخر واطلب رمزاً جديداً.',
       'Username is taken. Choose another and request a new code.',
     ),
-    'wait_before_resend' || 'too_many_attempts' || 'sms_rate_limited' => s.text(
+    'wait_before_resend' || 'too_many_attempts' => s.text(
       'انتظر قليلاً قبل المحاولة مرة ثانية.',
       'Please wait before trying again.',
     ),

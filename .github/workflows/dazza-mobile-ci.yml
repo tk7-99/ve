@@ -1,0 +1,93 @@
+name: DAZZA Mobile CI
+
+on:
+  push:
+    branches:
+      - dazza-web-mvp
+    paths:
+      - "mobile/**"
+      - "gateway/**"
+      - "scripts/**"
+      - "docs/**"
+      - "README.ar.md"
+      - ".github/workflows/dazza-mobile-ci.yml"
+  pull_request:
+    branches:
+      - dazza-web-mvp
+    paths:
+      - "mobile/**"
+      - "gateway/**"
+      - "scripts/**"
+      - "docs/**"
+      - "README.ar.md"
+      - ".github/workflows/dazza-mobile-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: dazza-mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: gateway/requirements.txt
+      - name: Install gateway dependencies
+        working-directory: gateway
+        run: pip install -r requirements.txt
+      - name: Run gateway tests
+        working-directory: gateway
+        env:
+          PYTHONPATH: .
+        run: pytest -q
+
+  flutter-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.9"
+          channel: stable
+          cache: true
+      - name: Install Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+      - name: Analyze
+        working-directory: mobile
+        run: flutter analyze
+      - name: Test
+        working-directory: mobile
+        run: flutter test
+      - name: Compile debug APK
+        working-directory: mobile
+        env:
+          DAZZA_API_URL: ${{ vars.DAZZA_API_URL }}
+          DAZZA_MATRIX_URL: ${{ vars.DAZZA_MATRIX_URL }}
+        run: |
+          API_URL="$DAZZA_API_URL"
+          MATRIX_URL="$DAZZA_MATRIX_URL"
+          if [ -z "$API_URL" ]; then API_URL="https://api.invalid"; fi
+          if [ -z "$MATRIX_URL" ]; then MATRIX_URL="https://matrix.invalid"; fi
+          flutter build apk --debug \
+            --dart-define=DAZZA_API_URL="$API_URL" \
+            --dart-define=DAZZA_MATRIX_URL="$MATRIX_URL"
+      - name: Upload debug APK
+        if: ${{ vars.DAZZA_API_URL != '' && vars.DAZZA_MATRIX_URL != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dazza-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
