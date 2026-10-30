@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     registration_shared_secret: SecretStr
     identity_secret: SecretStr
     password_secret: SecretStr
+    resend_api_key: SecretStr = SecretStr("")
+    resend_from: str = ""
     twilio_account_sid: str = ""
     twilio_auth_token: SecretStr = SecretStr("")
     twilio_verify_service_sid: str = ""
