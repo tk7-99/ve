@@ -123,7 +123,9 @@ async function enter(nextSession) {
   const linkedPost = new URLSearchParams(location.search).get("post");
   if (linkedPost) {
     await renderPostModal(linkedPost);
-    history.replaceState({}, "", location.pathname);
+    const cleanUrl = new URL(location.href);
+    cleanUrl.searchParams.delete("post");
+    history.replaceState({}, "", cleanUrl.toString());
   }
 }
 async function boot() {
