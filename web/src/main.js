@@ -286,7 +286,7 @@ function userRow(user) {
 async function renderProfile(userId) {
   const [profileResult, postsResult, followersResult, followingResult] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).single(),
-    supabase.from("posts").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(90),
+    supabase.from("posts").select("*", { count: "exact" }).eq("user_id", userId).order("created_at", { ascending: false }).limit(90),
     supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("following_id", userId).eq("status", "accepted"),
     supabase.from("follows").select("following_id", { count: "exact", head: true }).eq("follower_id", userId).eq("status", "accepted")
   ]);
