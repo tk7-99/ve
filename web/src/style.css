@@ -252,3 +252,14 @@ input[type=file]{padding:9px;color:#9da4b6;font-size:11px}
 .reel-actions .post-action{font-size:19px}
 .reel-actions .post-action:last-child{font-size:11px}
 @media(max-width:760px){.reel-video{max-height:68vh}.reel-card{margin-left:-1px;margin-right:-1px}}
+
+.profile-stats button{border:0;background:transparent;color:#bdc2ce;padding:0;font-size:12px}
+.profile-stats button:hover{color:#c8b6ff}
+.story-viewer{display:flex;flex-direction:column;min-height:350px}
+.story-viewer header,.story-viewer footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 13px}
+.story-viewer footer{color:#9299aa}
+.story-stage{min-height:230px;display:grid;place-items:center;position:relative}
+.story-step{width:34px;height:34px;border:1px solid #353b4a;border-radius:50%;background:#191e2a;color:#d5d0e5;font-size:24px;line-height:1}
+.story-step:disabled{opacity:.25;cursor:default}
+.follow-list{max-height:65vh;overflow:auto}
+.follow-list .user-row{padding:8px 2px;border-bottom:1px solid #293040}
