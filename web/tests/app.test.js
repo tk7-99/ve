@@ -114,7 +114,7 @@ test("social rooms, voice signaling and synchronized watch rooms are wired", asy
 });
 
 test("social room pages and challenge permissions are protected by RLS", async () => {
-  const migration = await readFile(new URL("../supabase/migrations/20261030080000_dazza_social_rooms_challenges.sql", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../../supabase/migrations/20261030080000_dazza_social_rooms_challenges.sql", import.meta.url), "utf8");
   for (const table of ["dazza_rooms", "dazza_room_members", "dazza_room_messages", "dazza_challenges", "dazza_challenge_participants"]) {
     assert.match(migration, new RegExp("alter table public\\." + table + " enable row level security"));
   }
