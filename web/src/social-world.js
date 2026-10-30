@@ -111,6 +111,7 @@ function roomTopic(id) {
 }
 
 async function openSocialRoom(roomId) {
+  if (activeRoom && activeRoom.id !== roomId) await closeRealtime();
   const { data: room, error } = await runtime.supabase.from("dazza_rooms").select("*").eq("id", roomId).maybeSingle();
   if (error) throw error;
   if (!room || room.status !== "open") throw new Error("هذه الغرفة مغلقة أو لم تعد موجودة.");
@@ -669,9 +670,11 @@ function applyWatchState(state) {
   const elapsed = Math.max(0, (Date.now() - Number(state.sentAt || Date.now())) / 1000);
   const target = Math.max(0, Number(state.time || 0) + (state.playing ? elapsed : 0));
   try {
-    watchPlayer.seekTo(target, true);
-    if (state.playing) watchPlayer.playVideo();
-    else watchPlayer.pauseVideo();
+    const current = Number(watchPlayer.getCurrentTime() || 0);
+    if (Math.abs(current - target) > 2.25) watchPlayer.seekTo(target, true);
+    const playerState = watchPlayer.getPlayerState();
+    if (state.playing && playerState !== window.YT.PlayerState.PLAYING) watchPlayer.playVideo();
+    else if (!state.playing && playerState === window.YT.PlayerState.PLAYING) watchPlayer.pauseVideo();
   } catch (error) { console.warn("Watch party sync failed:", error); }
 }
 
