@@ -221,7 +221,7 @@ function postCard(post) {
   return '<article class="post-card" data-post-card="' + post.id + '"><header class="post-head"><button class="post-author" data-action="open-profile" data-id="' + author.id + '"><span class="avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(author.display_name)) + '</span><span><strong>' + esc(author.display_name || author.username || "عضو") + '</strong><small>@' + esc(author.username || "") + ' · ' + dateLabel(post.created_at) + '</small></span></button><button class="dots-btn" data-action="post-menu" data-id="' + post.id + '" aria-label="خيارات">•••</button></header>' +
     (post.caption ? '<p class="post-caption">' + esc(post.caption) + '</p>' : '') + media +
     (post.location ? '<div class="post-location">⌖ ' + esc(post.location) + '</div>' : '') +
-    '<div class="post-actions"><button class="post-action ' + (post.liked ? "is-liked" : "") + '" data-action="toggle-like" data-id="' + post.id + '" data-liked="' + post.liked + '"><span>' + (post.liked ? "♥" : "♡") + '</span><b>' + post.likesCount + '</b></button><button class="post-action" data-action="focus-comment" data-id="' + post.id + '"><span>▢</span><b>' + post.commentsCount + '</b></button><button class="post-action" data-action="share-post" data-id="' + post.id + '"><span>↗</span></button><button class="post-action save-action ' + (post.saved ? "is-saved" : "") + '" data-action="toggle-save" data-id="' + post.id + '"><span>' + (post.saved ? "▣" : "▢") + '</span></button></div>' +
+    '<div class="post-actions"><button class="post-action ' + (post.liked ? "is-liked" : "") + '" data-action="toggle-like" data-id="' + post.id + '" data-liked="' + post.liked + '"><span>' + (post.liked ? "♥" : "♡") + '</span><b>' + post.likesCount + '</b></button><button class="post-action" data-action="view-comments" data-id="' + post.id + '"><span>▢</span><b>' + post.commentsCount + '</b></button><button class="post-action" data-action="share-post" data-id="' + post.id + '"><span>↗</span></button><button class="post-action save-action ' + (post.saved ? "is-saved" : "") + '" data-action="toggle-save" data-id="' + post.id + '"><span>' + (post.saved ? "▣" : "▢") + '</span></button></div>' +
     '<form class="comment-form" data-post="' + post.id + '"><input name="body" maxlength="1000" placeholder="اكتب تعليقاً..." required><button type="submit">نشر</button></form></article>';
 }
 async function getStories() {
@@ -385,12 +385,44 @@ async function openStory(storyId) {
   const { data: story, error } = await supabase.from("stories").select("*").eq("id", storyId).single();
   if (error) return notice(error.message, "error");
   const { data: author } = await supabase.from("profiles").select("id,username,display_name,avatar_path").eq("id", story.user_id).single();
-  if (story.user_id !== session.user.id) await supabase.from("story_views").upsert({ story_id: story.id, viewer_id: session.user.id });
+  if (story.user_id !== session.user.id) {
+    const alreadyViewed = await supabase.from("story_views").select("story_id").eq("story_id", story.id).eq("viewer_id", session.user.id).maybeSingle();
+    if (!alreadyViewed.data) await supabase.from("story_views").insert({ story_id: story.id, viewer_id: session.user.id });
+  }
   const media = publicUrl(story.media_path);
   const element = story.media_type === "video" ? '<video class="story-media" src="' + esc(media) + '" controls autoplay playsinline></video>' : '<img class="story-media" src="' + esc(media) + '" alt="قصة">';
   openModal('<div class="story-viewer"><header><span>' + esc(author?.display_name || author?.username || "قصة") + '</span><button class="close-btn" data-action="close-modal">×</button></header>' + element + (story.caption ? '<p>' + esc(story.caption) + '</p>' : '') + '<small>' + dateLabel(story.created_at) + '</small></div>');
 }
 
+async function renderComments(postId) {
+  const [commentsResult, postResult] = await Promise.all([
+    supabase.from("post_comments").select("*").eq("post_id", postId).order("created_at", { ascending: true }).limit(100),
+    supabase.from("posts").select("id,caption").eq("id", postId).single()
+  ]);
+  if (commentsResult.error) return notice(commentsResult.error.message, "error");
+  if (postResult.error) return notice(postResult.error.message, "error");
+  const rows = commentsResult.data || [];
+  const ids = [...new Set(rows.map(row => row.user_id))];
+  const people = ids.length ? await supabase.from("profiles").select("id,username,display_name,avatar_path").in("id", ids) : { data: [] };
+  if (people.error) return notice(people.error.message, "error");
+  const map = new Map((people.data || []).map(person => [person.id, person]));
+  const html = rows.map(row => {
+    const person = map.get(row.user_id) || {};
+    const avatar = avatarUrl(person.avatar_path);
+    return '<article class="comment-row"><span class="avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(person.display_name)) + '</span><div><strong>' + esc(person.username || person.display_name || "عضو") + '</strong><p>' + esc(row.body) + '</p><small>' + dateLabel(row.created_at) + '</small></div></article>';
+  }).join("");
+  openModal('<header class="modal-head"><h2>التعليقات</h2><button data-action="close-modal" class="close-btn">×</button></header>' +
+    '<div class="comment-list">' + (html || '<p class="muted">ماكو تعليقات بعد. اكتب أول تعليق.</p>') + '</div>' +
+    '<form class="comment-form modal-comment-form" data-post="' + postId + '"><input name="body" maxlength="1000" placeholder="اكتب تعليقاً..." required><button type="submit">نشر</button></form>');
+}
+async function renderPostModal(postId) {
+  const { data, error } = await supabase.from("posts").select("*").eq("id", postId).single();
+  if (error) return notice(error.message, "error");
+  const posts = await enrichPosts([data]);
+  if (!posts.length) return;
+  const post = posts[0];
+  openModal('<header class="modal-head"><h2>المنشور</h2><button data-action="close-modal" class="close-btn">×</button></header>' + postCard(post));
+}
 async function toggleLike(button) {
   const postId = button.dataset.id;
   const liked = button.dataset.liked === "true";
@@ -543,6 +575,7 @@ async function onClick(event) {
     return;
   }
   if (action === "open-story") return openStory(node.dataset.id);
+  if (action === "view-comments") return renderComments(node.dataset.id);
   if (action === "focus-comment") {
     const form = $('form[data-post="' + node.dataset.id + '"]');
     if (form) { form.querySelector("input")?.focus(); form.scrollIntoView({ behavior: "smooth", block: "center" }); }
@@ -580,11 +613,7 @@ async function onClick(event) {
   if (action === "new-chat") return promptNewChat();
   if (action === "open-dm") { activeConversation = node.dataset.id; return renderMessages(); }
   if (action === "message-user") return startDirectMessage(node.dataset.id);
-  if (action === "open-post") {
-    const { data, error } = await supabase.from("posts").select("user_id").eq("id", node.dataset.id).single();
-    if (error) return notice(error.message, "error");
-    return navigate("profile", data.user_id);
-  }
+  if (action === "open-post") return renderPostModal(node.dataset.id);
 }
 async function onSubmit(event) {
   const form = event.target;
@@ -667,7 +696,9 @@ async function onSubmit(event) {
       const { error } = await supabase.from("post_comments").insert({ post_id: postId, user_id: session.user.id, body });
       if (error) throw error;
       form.reset(); notice("تم نشر تعليقك.");
-      if (currentView === "feed") await renderFeed();
+      if (form.classList.contains("modal-comment-form")) await renderComments(postId);
+      else if (currentView === "feed") await renderFeed();
+      else if (currentView === "saved") await renderSaved();
       return;
     }
     if (form.id === "dm-form") {
