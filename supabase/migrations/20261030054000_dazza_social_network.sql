@@ -350,3 +350,16 @@ begin
   end if;
 end
 $$;
+
+-- Foreign-key supporting indexes and media feed index.
+create index if not exists conversations_created_by_idx on public.conversations(created_by);
+create index if not exists notifications_actor_idx on public.notifications(actor_id);
+create index if not exists notifications_comment_idx on public.notifications(comment_id);
+create index if not exists notifications_conversation_idx on public.notifications(conversation_id);
+create index if not exists notifications_post_idx on public.notifications(post_id);
+create index if not exists post_bookmarks_user_idx on public.post_bookmarks(user_id);
+create index if not exists post_comments_user_idx on public.post_comments(user_id);
+create index if not exists post_likes_user_idx on public.post_likes(user_id);
+create index if not exists stories_user_idx on public.stories(user_id);
+create index if not exists story_views_viewer_idx on public.story_views(viewer_id);
+create index if not exists posts_media_created_idx on public.posts(media_type,created_at desc);
