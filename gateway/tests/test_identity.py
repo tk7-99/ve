@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 import httpx
 import pytest
-from fastapi import HTTPException
 from app.main import app
 from app.security import digest
 from app.config import Settings
