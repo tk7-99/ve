@@ -12,6 +12,18 @@ void showFailure(BuildContext context, Session s, Object error) {
       'تعذّر إرسال الرمز إلى بريدك. حاول لاحقاً.',
       'The verification email could not be sent. Try again later.',
     ),
+    'microphone_permission_denied' => s.text(
+      'اسمح لتطبيق دَزّة باستخدام الميكروفون حتى تسجّل رسالة صوتية.',
+      'Allow DAZZA to use the microphone to record a voice message.',
+    ),
+    'voice_record_failed' => s.text(
+      'تعذّر إكمال تسجيل الرسالة الصوتية.',
+      'The voice recording could not be completed.',
+    ),
+    'voice_too_large' => s.text(
+      'التسجيل تجاوز الحد الأعلى البالغ 20 ميغابايت.',
+      'The recording exceeded the 20 MB limit.',
+    ),
     'attachment_download_failed' => s.text(
       'تعذّر تنزيل المرفق أو فك تشفيره.',
       'The attachment could not be downloaded or decrypted.',
