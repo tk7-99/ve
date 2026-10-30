@@ -794,24 +794,55 @@ async function onSubmit(event) {
       const password = String(data.get("password") || "");
       const submit = $("button[type=submit]", form);
       submit.disabled = true;
+      if (!email || !password) throw new Error("أدخل البريد الإلكتروني وكلمة المرور.");
       if (mode === "signup") {
         const username = String(data.get("username") || "").trim().toLowerCase();
-        const display_name = String(data.get("display-name") || "").trim();
+        const display_name = String(data.get("display_name") || "").trim();
+        if (!/^[a-z][a-z0-9_]{2,29}$/.test(username)) throw new Error("اسم المستخدم يجب أن يبدأ بحرف إنجليزي ويحتوي 3 إلى 30 حرفاً أو رقماً أو _.");
+        if (display_name.length < 1) throw new Error("اكتب الاسم الظاهر.");
         const result = await supabase.auth.signUp({
           email, password, options: { data: { username, display_name }, emailRedirectTo: location.origin }
         });
         if (result.error) throw result.error;
-        if (result.data.session) await enter(result.data.session);
-        else {
+        if (result.data.session) {
+          await enter(result.data.session);
+        } else {
           const node = $("#auth-notice");
-          if (node) { node.textContent = "تم إنشاء الحساب. افتح رسالة تأكيد البريد ثم سجّل الدخول."; node.hidden = false; }
+          if (node) { node.textContent = "تم إنشاء الحساب. افتح رسالة تأكيد البريد ثم ارجع وسجّل الدخول."; node.hidden = false; }
         }
       } else {
         const result = await supabase.auth.signInWithPassword({ email, password });
         if (result.error) throw result.error;
+        if (!result.data.session) throw new Error("لم يتم إنشاء جلسة دخول. تأكد من تأكيد بريدك الإلكتروني.");
         await enter(result.data.session);
       }
-      submit.disabled = false;
+      if (submit) submit.disabled = false;
+      return;
+    }
+    if (form.id === "reset-request-form") {
+      const email = String(data.get("email") || "").trim().toLowerCase();
+      if (!email) throw new Error("أدخل بريدك الإلكتروني.");
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
+      if (error) throw error;
+      closeModal();
+      if ($("#auth-notice")) {
+        $("#auth-notice").textContent = "تم طلب رابط الاستعادة. افحص البريد الوارد ومجلد الرسائل غير المرغوب بها.";
+        $("#auth-notice").hidden = false;
+      } else notice("تم طلب رابط الاستعادة. افحص بريدك الإلكتروني.");
+      return;
+    }
+    if (form.id === "password-update-form") {
+      const password = String(data.get("password") || "");
+      const confirmPassword = String(data.get("password_confirm") || "");
+      if (password.length < 8) throw new Error("كلمة المرور يجب أن تكون 8 أحرف على الأقل.");
+      if (password !== confirmPassword) throw new Error("كلمتا المرور غير متطابقتين.");
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      closeModal();
+      const { data: current } = await supabase.auth.getSession();
+      if (current.session) await enter(current.session);
+      else authView("login");
+      notice("تم تغيير كلمة المرور بنجاح.");
       return;
     }
     if (form.id === "post-form") {
@@ -888,7 +919,15 @@ async function onSubmit(event) {
     }
   } catch (error) {
     console.error(error);
-    notice(error.message || "تعذر إكمال العملية.", "error");
+    const message = error.message || "تعذر إكمال العملية.";
+    if (form.id === "auth-form") {
+      const node = $("#auth-notice");
+      if (node) { node.textContent = message; node.dataset.type = "error"; node.hidden = false; }
+    } else if (form.id === "reset-request-form" || form.id === "password-update-form") {
+      const existing = $("#auth-notice");
+      if (existing) { existing.textContent = message; existing.dataset.type = "error"; existing.hidden = false; }
+      else notice(message, "error");
+    } else notice(message, "error");
     setBusy(false);
     const submit = $("button[type=submit]", form);
     if (submit) submit.disabled = false;
