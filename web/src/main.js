@@ -23,6 +23,33 @@ let storyGroups = [];
 let liveChannel = null;
 let searchTerm = "";
 let busy = false;
+let activeGame = "hub";
+let gameState = null;
+let deferredInstallPrompt = null;
+let memoryClock = null;
+let timerClock = null;
+let focusSeconds = 25 * 60;
+let focusRunning = false;
+let focusInterval = null;
+let quizQuestions = [];
+let quizIndex = 0;
+let quizScore = 0;
+let quizSelected = null;
+let authBusy = false;
+
+function storageGet(key, fallback = null) {
+  try { const value = localStorage.getItem(key); return value === null ? fallback : value; }
+  catch { return fallback; }
+}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); return true; }
+  catch { return false; }
+}
+function applyTheme() {
+  const theme = storageGet("dazza-theme", "midnight");
+  document.documentElement.dataset.theme = theme;
+  document.body.dataset.theme = theme;
+}
 
 const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -54,8 +81,8 @@ function setBusy(value) {
 function authView(mode = "login") {
   const signup = mode === "signup";
   root.innerHTML = '<main class="auth-screen"><section class="auth-brand"><div class="brand-symbol">د</div><h1>دَزّة</h1><p>مساحتك، ناسك، وحكاياتك.</p><div class="auth-art"><span>شارك لحظتك</span><span>تابع مجتمعك</span><span>خلك قريب</span></div></section><section class="auth-panel"><div class="auth-card"><div class="brand-mobile">دَزّة</div><p class="eyebrow">أهلاً بيك بمجتمع دَزّة</p><h2>' + (signup ? "أنشئ حسابك" : "سجّل دخولك") + '</h2><p class="muted">' + (signup ? "ابدأ شارك صورك وقصصك وتواصل ويا الناس." : "ادخل لحسابك وشوف جديد مجتمعك.") + '</p><div id="auth-notice" class="notice" hidden></div><form id="auth-form" data-mode="' + mode + '">' +
-    (signup ? '<label>اسم المستخدم</label><input id="username" minlength="3" maxlength="30" pattern="[a-z][a-z0-9_]{2,29}" placeholder="ali_iraqi" required autocomplete="username"><label>الاسم الظاهر</label><input id="display-name" maxlength="80" required placeholder="اسمك للناس">' : "") +
-    '<label>البريد الإلكتروني</label><input id="email" type="email" maxlength="254" required autocomplete="email" placeholder="name@example.com"><label>كلمة المرور</label><input id="password" type="password" minlength="8" maxlength="72" required autocomplete="' + (signup ? "new-password" : "current-password") + '" placeholder="8 أحرف على الأقل"><button class="btn-primary full" type="submit">' + (signup ? "إنشاء الحساب" : "دخول") + '</button></form><p class="auth-switch">' + (signup ? "عندك حساب؟" : "ما عندك حساب؟") + ' <button class="link-btn" data-action="switch-auth" data-mode="' + (signup ? "login" : "signup") + '">' + (signup ? "سجّل دخول" : "أنشئ حساب") + '</button></p></div></section></main>';
+    (signup ? '<label for="username">اسم المستخدم</label><input id="username" name="username" minlength="3" maxlength="30" pattern="[a-z][a-z0-9_]{2,29}" placeholder="ali_iraqi" required autocomplete="username"><label for="display-name">الاسم الظاهر</label><input id="display-name" name="display_name" maxlength="80" required placeholder="اسمك للناس">' : "") +
+    '<label for="email">البريد الإلكتروني</label><input id="email" name="email" type="email" maxlength="254" required autocomplete="email" inputmode="email" placeholder="name@example.com"><label for="password">كلمة المرور</label><div class="password-field"><input id="password" name="password" type="password" minlength="8" maxlength="72" required autocomplete="' + (signup ? "new-password" : "current-password") + '" placeholder="8 أحرف على الأقل"><button type="button" class="password-toggle" data-action="toggle-password" aria-label="إظهار كلمة المرور">◉</button></div><button class="btn-primary full" type="submit">' + (signup ? "إنشاء الحساب" : "دخول") + '</button></form>' + (!signup ? '<button class="forgot-link" type="button" data-action="forgot-password">نسيت كلمة المرور؟</button>' : '') + '<p class="auth-switch">' + (signup ? "عندك حساب؟" : "ما عندك حساب؟") + ' <button class="link-btn" data-action="switch-auth" data-mode="' + (signup ? "login" : "signup") + '">' + (signup ? "سجّل دخول" : "أنشئ حساب") + '</button></p></div></section></main>';
 }
 function shell() {
   const avatar = avatarUrl(profile?.avatar_path);
@@ -101,16 +128,16 @@ async function enter(nextSession) {
   session = nextSession;
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData?.user) {
-    session = null;
-    return authView("login");
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    resetSignedInState();
+    throw new Error(userError?.message || "انتهت جلسة الدخول. سجّل الدخول مرة أخرى.");
   }
   session = { ...session, user: userData.user };
-  const { data, error } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
-  if (error) {
-    authView("login");
-    const node = $("#auth-notice");
-    if (node) { node.textContent = "تعذر تحميل حسابك: " + error.message; node.hidden = false; }
-    return;
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+  if (error || !data) {
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    resetSignedInState();
+    throw new Error(error?.message || "حسابك لم يكتمل إعداده بعد. جرّب مرة ثانية.");
   }
   profile = data;
   const admin = await supabase.from("app_admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
@@ -129,18 +156,30 @@ async function enter(nextSession) {
   }
 }
 async function boot() {
+  applyTheme();
   root.addEventListener("click", onClick);
   root.addEventListener("submit", onSubmit);
   root.addEventListener("change", onChange);
   root.addEventListener("input", onInput);
-  const { data } = await supabase.auth.getSession();
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    document.body.classList.add("pwa-installable");
+  });
+  window.addEventListener("online", updateNetworkBadge);
+  window.addEventListener("offline", updateNetworkBadge);
+  document.addEventListener("keydown", onGameKeydown);
+  updateNetworkBadge();
+  const { data, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) console.warn("Session restore:", sessionError);
   if (data.session) await enter(data.session);
   else authView("login");
   supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_OUT") {
-      session = null; profile = null; isAdmin = false; activeConversation = null;
-      if (liveChannel) supabase.removeChannel(liveChannel);
+      resetSignedInState();
       authView("login");
+    } else if (event === "PASSWORD_RECOVERY") {
+      openPasswordUpdate();
     }
   });
 }
