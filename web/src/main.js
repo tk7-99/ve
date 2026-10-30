@@ -45,6 +45,10 @@ function storageSet(key, value) {
   try { localStorage.setItem(key, value); return true; }
   catch { return false; }
 }
+function storageJsonGet(key, fallback) {
+  try { const raw=storageGet(key, ""); return raw ? JSON.parse(raw) : fallback; }
+  catch { return fallback; }
+}
 function applyTheme() {
   const theme = storageGet("dazza-theme", "midnight");
   document.documentElement.dataset.theme = theme;
@@ -240,6 +244,7 @@ async function boot() {
 }
 async function navigate(view, param) {
   if (!session) return authView("login");
+  if (view !== "games" && memoryClock) { clearInterval(memoryClock); memoryClock=null; }
   currentView = view;
   if (param !== undefined) currentProfileId = param;
   setActiveNav();
@@ -369,11 +374,11 @@ const QUIZ_BANK = [
   { q:"أي كوكب يُعرف بالكوكب الأحمر؟", a:["الزهرة","المريخ","عطارد","أورانوس"], correct:1, why:"لون المريخ المائل للأحمر بسبب أكاسيد الحديد." }
 ];
 function gameScore(name) {
-  const scores = JSON.parse(storageGet("dazza-game-scores", "{}") || "{}");
+  const scores = storageJsonGet("dazza-game-scores", {});
   return Number(scores[name] || 0);
 }
 function saveGameScore(name, score, mode = "max") {
-  const scores = JSON.parse(storageGet("dazza-game-scores", "{}") || "{}");
+  const scores = storageJsonGet("dazza-game-scores", {});
   scores[name] = mode === "sum" ? (Number(scores[name] || 0) + score) : Math.max(Number(scores[name] || 0), score);
   storageSet("dazza-game-scores", JSON.stringify(scores));
 }
@@ -387,7 +392,7 @@ function renderGames() {
     ["rps","حجر ورقة مقص","تحدّ خصم الكمبيوتر وارفع نتيجتك.","✊","سريعة"],
     ["quiz","اختبار المعلومات","خمسة أسئلة جديدة في كل جولة.","⚡","ثقافة"]
   ];
-  const best = JSON.parse(storageGet("dazza-game-scores","{}") || "{}");
+  const best = storageJsonGet("dazza-game-scores", {});
   showContent('<div class="games-hero"><div class="games-hero-copy"><span class="eyebrow">DAZZA ARCADE · FREE TO PLAY</span><h1>مساحة لعبك تبدأ هنا.</h1><p>ألعاب خفيفة وسريعة تعمل داخل دَزّة بدون تنزيل إضافي أو اشتراك.</p><div class="hero-stats"><span><b>05</b><small>ألعاب متاحة</small></span><span><b>0</b><small>تكلفة لعب</small></span><span><b>∞</b><small>محاولات</small></span></div></div><div class="games-orb">✦</div></div><div class="page-heading"><div><h2>اختر لعبتك</h2><p>النتائج الأفضل تُحفظ على هذا الجهاز.</p></div><span class="free-pill">مجاني</span></div><div class="games-grid">' + games.map(([id,title,description,icon,tag],index)=>'<button class="game-card game-card-'+id+'" data-action="launch-game" data-game="'+id+'"><span class="game-card-top"><i>'+icon+'</i><small>'+tag+'</small></span><strong>'+title+'</strong><p>'+description+'</p><span class="game-card-bottom"><span>أفضل نتيجة: '+(best[id] ?? "—")+'</span><b>العب الآن ↗</b></span></button>').join("") + '</div><section class="arcade-note"><span>✧</span><div><strong>اللعب النظيف</strong><p>الألعاب حالياً فردية ومحلية. لا نطلب صلاحيات خاصة ولا نرسل نتائجك إلى خادم خارجي.</p></div></section>');
 }
 function renderGame(id) {
@@ -445,7 +450,7 @@ function flipMemoryCard(index) {
     }
     gameState.locked=true;
     renderMemory();
-    setTimeout(()=>{if(!gameState||activeGame!=="memory")return;gameState.flipped=[];gameState.locked=false;renderMemory();},850);
+    setTimeout(()=>{if(!gameState||activeGame!=="memory"||currentView!=="games")return;gameState.flipped=[];gameState.locked=false;renderMemory();},850);
     return;
   }
   renderMemory();
@@ -483,7 +488,7 @@ function playTicTacToe(index) {
   if(gameState.winner){if(gameState.winner==="X")saveGameScore("ttt",gameScore("ttt")+1);renderTicTacToe();return;}
   gameState.thinking=true;renderTicTacToe();
   setTimeout(()=>{
-    if(!gameState||activeGame!=="ttt")return;
+    if(!gameState||activeGame!=="ttt"||currentView!=="games")return;
     const move=bestTttMove(gameState.board);
     if(move>=0)gameState.board[move]="O";
     gameState.winner=tttWinner(gameState.board);
@@ -594,21 +599,21 @@ async function renderSettings() {
   showContent('<div class="page-heading"><div><h1>الإعدادات والحساب</h1><p>تحكم بتجربتك داخل دَزّة.</p></div></div><section class="settings-card"><div class="settings-account"><span class="profile-avatar small-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="">':initials(profile.display_name))+'</span><div><strong>'+esc(profile.display_name)+'</strong><small>@'+esc(profile.username)+'</small><small>'+esc(session.user.email||"")+'</small></div></div><button class="btn-secondary" data-action="edit-profile">تعديل بيانات الملف</button></section><section class="settings-card"><h2>المظهر</h2><p>اختر الشكل الذي يناسب عينيك.</p><div class="theme-choices"><button data-action="set-theme" data-theme="midnight" class="'+(theme==="midnight"?"selected":"")+'">ليلي فضائي</button><button data-action="set-theme" data-theme="daylight" class="'+(theme==="daylight"?"selected":"")+'">نهاري هادئ</button></div></section><section class="settings-card"><h2>التطبيق</h2><p>ثبّت دَزّة على الشاشة الرئيسية للوصول السريع. الملفات الأساسية قابلة للتخزين المؤقت، لكن المحتوى والحساب يحتاجان اتصالاً.</p><button class="btn-secondary" data-action="install-app">تثبيت دَزّة</button></section><section class="settings-card settings-danger"><h2>الجلسة والأمان</h2><p>تسجيل الخروج من هذا الجهاز فقط، ولن يتم إنهاء جلساتك على الأجهزة الأخرى.</p><button class="btn-danger" data-action="logout">تسجيل الخروج من الحساب</button></section>');
 }
 async function renderTools() {
-  const notes=JSON.parse(storageGet("dazza-notes","[]")||"[]");
+  const notes=storageJsonGet("dazza-notes", []);
   showContent('<div class="page-heading"><div><h1>مختبر دَزّة</h1><p>أدوات سريعة ومجانية، تعمل مباشرة على جهازك.</p></div><span class="free-pill">بدون اشتراك</span></div><div class="tools-grid"><section class="tool-card"><span class="tool-icon">∑</span><h2>حاسبة سريعة</h2><form id="calculator-form" class="tool-form"><input type="number" step="any" name="a" placeholder="الرقم الأول" required><select name="operator"><option value="+">جمع +</option><option value="-">طرح −</option><option value="*">ضرب ×</option><option value="/">قسمة ÷</option><option value="%">باقي القسمة %</option></select><input type="number" step="any" name="b" placeholder="الرقم الثاني" required><button class="btn-primary" type="submit">احسب</button></form><output id="calculator-output" class="tool-output">النتيجة تظهر هنا</output></section><section class="tool-card"><span class="tool-icon">⇄</span><h2>تحويل الوحدات</h2><form id="converter-form" class="tool-form"><input name="amount" type="number" step="any" placeholder="القيمة" required><select name="conversion"><option value="km-mi">كيلومتر ← ميل</option><option value="mi-km">ميل ← كيلومتر</option><option value="kg-lb">كيلوغرام ← باوند</option><option value="lb-kg">باوند ← كيلوغرام</option><option value="c-f">مئوية ← فهرنهايت</option><option value="f-c">فهرنهايت ← مئوية</option><option value="cm-in">سنتيمتر ← إنش</option><option value="in-cm">إنش ← سنتيمتر</option></select><button class="btn-primary" type="submit">حوّل</button></form><output id="converter-output" class="tool-output">اختر الوحدة وأدخل القيمة</output></section><section class="tool-card"><span class="tool-icon">✎</span><h2>ملاحظاتك الخاصة</h2><p>تُحفظ الملاحظات على هذا الجهاز فقط، ولا ترفع إلى الخادم.</p><textarea id="quick-note" rows="3" maxlength="1000" placeholder="اكتب فكرة أو ملاحظة..."></textarea><button class="btn-primary" data-action="save-note">حفظ الملاحظة</button><div class="notes-list">'+(notes.slice(0,8).map((note,index)=>'<div class="note-item"><p>'+esc(note.text)+'</p><small>'+esc(note.date)+'</small><button data-action="delete-note" data-index="'+index+'" aria-label="حذف">×</button></div>').join("")||'<small class="muted">لا توجد ملاحظات محفوظة.</small>')+'</div></section><section class="tool-card"><span class="tool-icon">◷</span><h2>مؤقّت التركيز</h2><p>جلسة تركيز قصيرة، ثم استراحة بسيطة.</p><div class="focus-clock" id="focus-clock">'+formatClock(focusSeconds)+'</div><div class="focus-actions"><button class="btn-primary" data-action="focus-toggle">'+(focusRunning?"إيقاف مؤقت":"ابدأ التركيز")+'</button><button class="btn-secondary" data-action="focus-reset">إعادة</button></div></section><section class="tool-card wide-tool"><span class="tool-icon">Aa</span><h2>عداد النصوص</h2><textarea id="word-input" rows="4" placeholder="الصق أو اكتب النص هنا حتى تحسب كلماته وحروفه..."></textarea><div class="text-stats"><span>كلمات <b id="word-count">0</b></span><span>حروف <b id="char-count">0</b></span><span>حروف بدون مسافات <b id="char-no-space">0</b></span></div></section></div><p class="tools-disclaimer">الأدوات الحسابية والملاحظات والمؤقّت تعمل على جهازك. لا تُرسل محتوى الملاحظات إلى دَزّة.</p>');
 }
 function saveQuickNote() {
   const input=$("#quick-note");
   const text=String(input?.value||"").trim();
   if(!text)return notice("اكتب ملاحظة قبل الحفظ.","error");
-  const notes=JSON.parse(storageGet("dazza-notes","[]")||"[]");
+  const notes=storageJsonGet("dazza-notes", []);
   notes.unshift({text,date:new Date().toLocaleString("ar-IQ")});
   storageSet("dazza-notes",JSON.stringify(notes.slice(0,30)));
   renderTools();
   notice("تم حفظ الملاحظة على هذا الجهاز.");
 }
 function deleteQuickNote(index) {
-  const notes=JSON.parse(storageGet("dazza-notes","[]")||"[]");
+  const notes=storageJsonGet("dazza-notes", []);
   if(index<0||index>=notes.length)return;
   notes.splice(index,1);storageSet("dazza-notes",JSON.stringify(notes));renderTools();
 }
