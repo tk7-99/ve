@@ -166,7 +166,8 @@ async function createSocialRoom(data) {
   const maxMembers = Number(data.get("max_members") || 6);
   if (title.length < 2 || title.length > 80) throw new Error("اسم الغرفة يجب أن يكون بين حرفين و80 حرفاً.");
   if (!["voice", "watch", "game"].includes(roomType)) throw new Error("نوع الغرفة غير صالح.");
-  const max = roomType === "voice" ? Math.min(maxMembers, 6) : Math.min(maxMembers, 12);
+  if (!Number.isInteger(maxMembers) || maxMembers < 2 || maxMembers > 12) throw new Error("عدد المشاركين يجب أن يكون بين 2 و12.");
+  const max = roomType === "voice" ? Math.min(maxMembers, 6) : maxMembers;
   let videoId = null;
   if (roomType === "watch") {
     videoId = youtubeId(data.get("video_url"));
@@ -568,6 +569,10 @@ async function closeRealtime() {
     await runtime.supabase.removeChannel(channel);
   }
   chatIds.clear();
+  answeredQuizQuestions.clear();
+  hostQuizAnswers.clear();
+  currentQuizQuestionIndex = null;
+  heartbeatFailures = 0;
 }
 
 async function toggleVoice() {
