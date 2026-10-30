@@ -124,6 +124,8 @@ async function openSocialRoom(roomId) {
   await connectRoomChannel();
 }
 
+export async function openSharedSocialRoom(roomId) { return openSocialRoom(roomId); }
+
 async function createSocialRoom(data) {
   const title = String(data.get("title") || "").trim();
   const roomType = String(data.get("room_type") || "voice");
