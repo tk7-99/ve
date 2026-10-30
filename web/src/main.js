@@ -1053,7 +1053,10 @@ async function onClick(event) {
     return;
   }
   if (!action) return;
-  if (action.startsWith("social-") && await handleSocialAction(action, node)) return;
+  if (action.startsWith("social-")) {
+    try { if (await handleSocialAction(action, node)) return; }
+    catch (error) { console.error("Social action failed:", error); notice(error.message || "تعذر تنفيذ العملية.", "error"); }
+  }
   if (action === "switch-auth") return authView(node.dataset.mode);
   if (action === "logout") return signOutUser();
   if (action === "account-menu") return accountMenu();
