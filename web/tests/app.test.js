@@ -122,3 +122,38 @@ test("social room pages and challenge permissions are protected by RLS", async (
   assert.match(migration, /dazza room members send realtime/);
   assert.match(migration, /grant select, insert, update, delete on public\.dazza_rooms to authenticated/);
 });
+
+
+test("social rooms use expiring membership heartbeats and strict room presence", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  const hardening = await readFile(new URL("../../supabase/migrations/20261030090000_dazza_room_rls_capacity_heartbeat_hardening.sql", import.meta.url), "utf8");
+  const grace = await readFile(new URL("../../supabase/migrations/20261030091000_dazza_room_heartbeat_grace_window.sql", import.meta.url), "utf8");
+  assert.match(social, /last_seen_at/);
+  assert.match(social, /roomHeartbeat/);
+  assert.match(social, /expires_at/);
+  assert.match(social, /heartbeatFailures >= 4/);
+  assert.match(hardening, /dazza_room_members_capacity_before_insert/);
+  assert.match(hardening, /private\.is_dazza_room_member/);
+  assert.match(hardening, /dazza_room_messages_rate_before_insert/);
+  assert.match(grace, /interval '3 minutes'/);
+  assert.doesNotMatch(hardening, /using \(\s*exists\s*\(\s*select 1 from public\.dazza_room_members/);
+});
+
+test("YouTube room links reject lookalike domains and malformed identifiers", async () => {
+  const { getYouTubeVideoId } = await import("../src/social-world.js");
+  assert.equal(getYouTubeVideoId("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://music.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://youtu.be/dQw4w9WgXcQ"), "dQw4w9WgXcQ");
+  assert.equal(getYouTubeVideoId("https://youtube.com.attacker.invalid/watch?v=dQw4w9WgXcQ"), "");
+  assert.equal(getYouTubeVideoId("https://example.com/watch?v=dQw4w9WgXcQ"), "");
+  assert.equal(getYouTubeVideoId("https://youtu.be/short"), "");
+});
+
+test("quiz answer results are checked by the host and repeated answers are blocked", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  assert.match(social, /answeredQuizQuestions\.has\(questionIndex\)/);
+  assert.match(social, /hostQuizAnswers\.has\(answerKey\)/);
+  assert.match(social, /answerIndex === question\.correct/);
+  assert.doesNotMatch(social, /correct: index === question\.correct/);
+  assert.match(social, /quiz-answer-result/);
+});
