@@ -40,15 +40,15 @@ function renderLogin() {
   shell(`<section class="auth-card">
     <div class="brand-mark">د</div>
     <p class="eyebrow">هلا بيك بدَزّة</p><h1>خلّينا نبدي السالفة</h1>
-    <p class="muted">سجّل برقم هاتفك حتى نرسل رمز تحقق حقيقي.</p>
+    <p class="muted">سجّل ببريدك الإلكتروني حتى نرسل إلك رمز تحقق.</p>
     <div id="notice" class="notice" hidden></div>
     <form id="start-form">
-      <label for="phone">رقم الهاتف</label>
-      <div class="phone-row"><span>+964</span><input id="phone" name="phone" inputmode="tel" autocomplete="tel-national" placeholder="7XXXXXXXXX" required minlength="9" maxlength="12"></div>
+      <label for="email">البريد الإلكتروني</label>
+      <input id="email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required maxlength="254">
       <button class="primary" type="submit">إرسال رمز التحقق</button>
     </form>
     <form id="verify-form" hidden>
-      <label for="code">رمز التحقق</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="أدخل الرمز" required>
+      <label for="code">رمز التحقق</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="أدخل الرمز المكوّن من 6 أرقام" required pattern="[0-9]{6}" maxlength="6">
       <label for="username">اسم المستخدم</label><input id="username" name="username" autocomplete="username" placeholder="مثال: ali_iraqi" pattern="[a-z][a-z0-9_]{2,29}" required>
       <label for="display">الاسم الظاهر</label><input id="display" name="display" autocomplete="name" placeholder="شلون تحب نناديك؟" required maxlength="80">
       <button class="primary" type="submit">تأكيد والدخول</button>
@@ -57,19 +57,19 @@ function renderLogin() {
   let challengeId = "";
   $("#start-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!safeUrl(config.api)) return notice("إعداد عنوان خادم الدخول HTTPS غير مكتمل.", "error");
-    const phone = $("#phone").value.trim().replace(/^0+/, "");
+    if (!safeUrl(config.api)) return notice("عنوان خادم الدخول HTTPS غير مضبوط بعد.", "error");
+    const email = $("#email").value.trim().toLowerCase();
     const button = event.submitter; button.disabled = true; button.textContent = "دا نرسل الرمز...";
     try {
-      const response = await fetch(config.api + "/v1/auth/start", {
+      const response = await fetch(config.api + "/v1/auth/email/start", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: "+964" + phone })
+        body: JSON.stringify({ email })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "تعذر إرسال الرمز");
       challengeId = data.challenge_id;
       $("#start-form").hidden = true; $("#verify-form").hidden = false;
-      notice("وصل طلب إرسال الرمز. افحص رسائلك وانتبه لا تشارك الرمز ويا أي شخص.");
+      notice("دزّينا طلب رمز التحقق إلى بريدك. افحص الوارد والرسائل غير المرغوب بها.");
     } catch (error) { notice(error.message, "error"); }
     finally { button.disabled = false; button.textContent = "إرسال رمز التحقق"; }
   });
@@ -77,7 +77,7 @@ function renderLogin() {
     event.preventDefault();
     const button = event.submitter; button.disabled = true; button.textContent = "دا نتحقق...";
     try {
-      const response = await fetch(config.api + "/v1/auth/verify", {
+      const response = await fetch(config.api + "/v1/auth/email/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           challenge_id: challengeId, code: $("#code").value.trim(),
