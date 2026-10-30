@@ -7,6 +7,11 @@ let runtime = {};
 let activeRoom = null;
 let roomChannel = null;
 let roomMembers = [];
+let roomHeartbeat = null;
+let heartbeatBusy = false;
+let currentQuizQuestionIndex = null;
+const answeredQuizQuestions = new Set();
+const hostQuizAnswers = new Set();
 let localStream = null;
 let voiceEnabled = false;
 let muted = false;
@@ -39,14 +44,20 @@ function youtubeId(value) {
   if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) return raw;
   try {
     const url = new URL(raw);
-    if (url.hostname === "youtu.be" || url.hostname.endsWith(".youtu.be")) {
-      return url.pathname.split("/").filter(Boolean)[0]?.slice(0, 11) || "";
+    const host = url.hostname.toLowerCase();
+    if (host === "youtu.be" || host === "www.youtu.be") {
+      const id = url.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : "";
     }
-    if (url.hostname.includes("youtube.com")) {
-      if (url.pathname === "/watch") return (url.searchParams.get("v") || "").slice(0, 11);
+    if (["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"].includes(host)) {
       const parts = url.pathname.split("/").filter(Boolean);
-      const marker = parts.findIndex(part => ["embed", "shorts", "live"].includes(part));
-      if (marker >= 0) return (parts[marker + 1] || "").slice(0, 11);
+      const candidate = url.pathname === "/watch"
+        ? (url.searchParams.get("v") || "")
+        : (() => {
+            const marker = parts.findIndex(part => ["embed", "shorts", "live"].includes(part));
+            return marker >= 0 ? (parts[marker + 1] || "") : "";
+          })();
+      return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
     }
   } catch { /* invalid URL */ }
   return "";
@@ -55,7 +66,7 @@ function youtubeId(value) {
 export async function renderSocialWorld() {
   const supabase = runtime.supabase;
   const [roomsResult, challengesResult, myChallengesResult] = await Promise.all([
-    supabase.from("dazza_rooms").select("id,room_type,title,host_id,video_id,game_key,max_members,created_at").eq("status", "open").order("created_at", { ascending: false }).limit(30),
+    supabase.from("dazza_rooms").select("id,room_type,title,host_id,video_id,game_key,max_members,created_at,expires_at").eq("status", "open").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: false }).limit(30),
     supabase.from("dazza_challenges").select("*").eq("status", "open").order("created_at", { ascending: false }).limit(30),
     supabase.from("dazza_challenge_participants").select("challenge_id,status,progress").eq("user_id", runtime.user.id)
   ]);
@@ -114,7 +125,9 @@ async function openSocialRoom(roomId) {
   if (activeRoom && activeRoom.id !== roomId) await closeRealtime();
   const { data: room, error } = await runtime.supabase.from("dazza_rooms").select("*").eq("id", roomId).maybeSingle();
   if (error) throw error;
-  if (!room || room.status !== "open") throw new Error("هذه الغرفة مغلقة أو لم تعد موجودة.");
+  if (!room || room.status !== "open" || !room.expires_at || new Date(room.expires_at).getTime() <= Date.now()) {
+    throw new Error("هذه الغرفة مغلقة أو انتهت صلاحيتها.");
+  }
   const { data: membership, error: membershipError } = await runtime.supabase.from("dazza_room_members").select("role").eq("room_id", room.id).eq("user_id", runtime.user.id).maybeSingle();
   if (membershipError) throw membershipError;
   if (!membership) {
@@ -122,12 +135,26 @@ async function openSocialRoom(roomId) {
       room_id: room.id, user_id: runtime.user.id, role: room.host_id === runtime.user.id ? "host" : "member"
     });
     if (joinError) throw joinError;
+  } else {
+    const { data: refreshed, error: refreshError } = await runtime.supabase.from("dazza_room_members")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("room_id", room.id).eq("user_id", runtime.user.id)
+      .select("room_id").maybeSingle();
+    if (refreshError) throw refreshError;
+    if (!refreshed) throw new Error("انتهت عضويتك في هذه الغرفة. حاول الدخول مجدداً.");
   }
   activeRoom = room;
   roomMembers = [];
   chatIds.clear();
-  await renderRoomPage();
-  await connectRoomChannel();
+  try {
+    await renderRoomPage();
+    await connectRoomChannel();
+  } catch (error) {
+    await closeRealtime();
+    activeRoom = null;
+    await renderSocialWorld();
+    throw error;
+  }
 }
 
 export async function openSharedSocialRoom(roomId) { return openSocialRoom(roomId); }
@@ -290,6 +317,9 @@ export async function handleSocialAction(action, node) {
     if (activeRoom?.host_id !== runtime.user.id) return true;
     const index = Math.floor(Math.random() * YT_QUESTIONS.length);
     const state = { questionIndex: index, answers: [] };
+    currentQuizQuestionIndex = index;
+    answeredQuizQuestions.clear();
+    hostQuizAnswers.clear();
     renderRoomQuiz(state);
     await roomChannel?.send({ type: "broadcast", event: "quiz-state", payload: state });
     return true;
@@ -298,12 +328,15 @@ export async function handleSocialAction(action, node) {
     const index = Number(node.dataset.answer);
     const questionIndex = Number(node.dataset.question);
     const question = YT_QUESTIONS[questionIndex];
-    if (!question || !Number.isInteger(index) || index < 0 || index > 2) return true;
+    if (!question || !Number.isInteger(index) || index < 0 || index >= question.a.length) return true;
+    if (answeredQuizQuestions.has(questionIndex)) return true;
+    answeredQuizQuestions.add(questionIndex);
+    $("#social-room-quiz")?.querySelectorAll("button[data-action='social-quiz-answer']").forEach(button => { button.disabled = true; });
     await roomChannel?.send({
       type: "broadcast", event: "quiz-answer",
-      payload: { userId: runtime.user.id, displayName: runtime.profile?.display_name || "عضو", correct: index === question.correct }
+      payload: { userId: runtime.user.id, displayName: runtime.profile?.display_name || "عضو", questionIndex, answerIndex: index }
     });
-    notify(index === question.correct ? "إجابة صحيحة!" : "إجابة غير صحيحة، جرّب بالسؤال القادم.");
+    notify("تم إرسال إجابتك. بانتظار تأكيد المضيف.");
     return true;
   }
   return false;
@@ -311,6 +344,7 @@ export async function handleSocialAction(action, node) {
 
 async function connectRoomChannel() {
   if (!activeRoom) return;
+  if (roomHeartbeat) { clearInterval(roomHeartbeat); roomHeartbeat = null; }
   if (roomChannel) await runtime.supabase.removeChannel(roomChannel);
   const channel = runtime.supabase.channel(roomTopic(activeRoom.id), {
     config: { private: true, presence: { key: runtime.user.id }, broadcast: { ack: true } }
@@ -332,10 +366,33 @@ async function connectRoomChannel() {
       activeRoom = null;
       await renderSocialWorld();
     })
-    .on("broadcast", { event: "quiz-state" }, event => renderRoomQuiz(event?.payload || event))
-    .on("broadcast", { event: "quiz-answer" }, event => {
+    .on("broadcast", { event: "quiz-state" }, event => {
+      const state = event?.payload || event;
+      if (state?.questionIndex !== currentQuizQuestionIndex) answeredQuizQuestions.clear();
+      currentQuizQuestionIndex = state?.questionIndex ?? null;
+      renderRoomQuiz(state);
+    })
+    .on("broadcast", { event: "quiz-answer" }, async event => {
       const payload = event?.payload || event;
-      if (activeRoom?.host_id === runtime.user.id) notify((payload.displayName || "عضو") + (payload.correct ? " أجاب بشكل صحيح." : " لم تصح إجابته."));
+      if (activeRoom?.host_id !== runtime.user.id) return;
+      const question = YT_QUESTIONS[Number(payload.questionIndex)];
+      const answerIndex = Number(payload.answerIndex);
+      if (!question || !payload.userId || !Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex >= question.a.length) return;
+      const answerKey = String(payload.questionIndex) + ":" + payload.userId;
+      if (hostQuizAnswers.has(answerKey)) return;
+      hostQuizAnswers.add(answerKey);
+      const correct = answerIndex === question.correct;
+      await roomChannel?.send({
+        type: "broadcast", event: "quiz-answer-result",
+        payload: { userId: payload.userId, correct, questionIndex: payload.questionIndex }
+      });
+      notify((payload.displayName || "عضو") + (correct ? " أجاب بشكل صحيح." : " إجابته غير صحيحة."));
+    })
+    .on("broadcast", { event: "quiz-answer-result" }, event => {
+      const payload = event?.payload || event;
+      if (payload?.userId === runtime.user.id) {
+        notify(payload.correct ? "إجابة صحيحة!" : "إجابة غير صحيحة، جرّب بالسؤال القادم.");
+      }
     });
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("انتهت مهلة الاتصال بالغرفة. تحقق من اتصال الإنترنت.")), 15000);
@@ -354,6 +411,11 @@ async function connectRoomChannel() {
     roomChannel = null;
     throw new Error("الغرفة مكتملة حالياً. جرّب غرفة أخرى أو أنشئ غرفتك.");
   }
+  await heartbeatRoom();
+  if (!activeRoom || !roomChannel) throw new Error("انتهى اتصالك بالغرفة.");
+  roomHeartbeat = setInterval(() => {
+    heartbeatRoom().catch(error => console.warn("Room heartbeat:", error));
+  }, 25000);
   await updatePresence();
   await loadRoomChat();
   syncRoomPresence();
@@ -460,7 +522,24 @@ async function leaveSocialRoom() {
   await renderSocialWorld();
 }
 
+async function heartbeatRoom() {
+  if (!activeRoom || !roomChannel || heartbeatBusy) return false;
+  heartbeatBusy = true;
+  try {
+    const { data, error } = await runtime.supabase.from("dazza_room_members")
+      .update({ last_seen_at: new Date().toISOString() })
+      .eq("room_id", activeRoom.id).eq("user_id", runtime.user.id)
+      .select("room_id").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("انتهت عضويتك في الغرفة.");
+    return true;
+  } finally {
+    heartbeatBusy = false;
+  }
+}
+
 async function closeRealtime() {
+  if (roomHeartbeat) { clearInterval(roomHeartbeat); roomHeartbeat = null; }
   await stopVoice();
   if (watchTicker) { clearInterval(watchTicker); watchTicker = null; }
   if (watchPlayer?.destroy) { try { watchPlayer.destroy(); } catch { /* player already removed */ } }
@@ -612,11 +691,16 @@ function closeRemoteAudio(peerId) {
   }
 }
 
+let youTubeApiPromise = null;
 function ensureYouTubeAPI() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
-  return new Promise((resolve, reject) => {
+  if (youTubeApiPromise) return youTubeApiPromise;
+  youTubeApiPromise = new Promise((resolve, reject) => {
     const oldCallback = window.onYouTubeIframeAPIReady;
-    const timeout = setTimeout(() => reject(new Error("تعذر تحميل مشغل يوتيوب. تحقق من إعدادات المتصفح.")), 18000);
+    const timeout = setTimeout(() => {
+      youTubeApiPromise = null;
+      reject(new Error("تعذر تحميل مشغل يوتيوب. تحقق من اتصال الإنترنت."));
+    }, 18000);
     window.onYouTubeIframeAPIReady = () => {
       if (typeof oldCallback === "function") oldCallback();
       clearTimeout(timeout);
@@ -625,11 +709,18 @@ function ensureYouTubeAPI() {
     let script = $('script[src="https://www.youtube.com/iframe_api"]');
     if (!script) {
       script = document.createElement("script");
+      script = document.createElement("script");
       script.src = "https://www.youtube.com/iframe_api";
       script.async = true;
+      script.onerror = () => {
+        clearTimeout(timeout);
+        youTubeApiPromise = null;
+        reject(new Error("فشل تحميل مشغل يوتيوب."));
+      };
       document.head.append(script);
     }
   });
+  return youTubeApiPromise;
 }
 
 async function initializeWatchPlayer() {
@@ -687,7 +778,8 @@ function renderRoomQuiz(state) {
   }
   const item = YT_QUESTIONS[state.questionIndex];
   if (!item) return;
-  box.innerHTML = '<h3>' + esc(item.q) + '</h3><div class="social-quiz-answers">' + item.a.map((answer, index) => '<button class="btn-secondary" data-action="social-quiz-answer" data-answer="' + index + '" data-question="' + state.questionIndex + '">' + esc(answer) + '</button>').join("") + '</div>';
+  const answered = answeredQuizQuestions.has(state.questionIndex);
+  box.innerHTML = '<h3>' + esc(item.q) + '</h3><div class="social-quiz-answers">' + item.a.map((answer, index) => '<button class="btn-secondary" data-action="social-quiz-answer" data-answer="' + index + '" data-question="' + state.questionIndex + '"' + (answered ? " disabled" : "") + '>' + esc(answer) + '</button>').join("") + '</div>' + (answered ? '<small class="muted">تم إرسال إجابتك.</small>' : "");
 }
 
 export async function cleanupSocialWorld() {
