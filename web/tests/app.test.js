@@ -164,7 +164,7 @@ test("room chat shows latest messages and avoids duplicate inserts after broadca
   assert.ok(social.includes('order("created_at", { ascending: false }).limit(80)'));
   assert.ok(social.includes("form.reset();"));
   assert.ok(social.includes("Room message saved but realtime delivery failed"));
-  assert.ok(social.includes("item.reward_points + ' نقطة رمزية'"));
+  assert.ok(social.includes("item.reward_points + ' نقطة رمزية</span>"));
 });
 
 test("server-side room guards cap voice rooms and normalize timestamps", async () => {
