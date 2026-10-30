@@ -4,10 +4,10 @@ class AppConfig {
 
   // Normalize base URLs so a trailing slash does not create double-slash
   // API routes or a false homeserver mismatch after login.
-  static String get gateway => _withoutTrailingSlash(_gateway);
-  static String get homeserver => _withoutTrailingSlash(_homeserver);
+  static String get gateway => normalizeBaseUrl(_gateway);
+  static String get homeserver => normalizeBaseUrl(_homeserver);
 
-  static String _withoutTrailingSlash(String value) {
+  static String normalizeBaseUrl(String value) {
     var normalized = value.trim();
     while (normalized.endsWith('/')) {
       normalized = normalized.substring(0, normalized.length - 1);
