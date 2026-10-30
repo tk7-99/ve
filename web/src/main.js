@@ -8,7 +8,7 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_j
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
 });
-let session = null, profile = null, activeConversation = null, liveChannel = null;
+let session = null, profile = null, isAdmin = false, activeConversation = null, liveChannel = null;
 let conversations = [];
 
 const esc = (v = "") => String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -55,6 +55,8 @@ async function enter(nextSession) {
   const { data, error } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
   if (error) throw new Error("الحساب موجود لكن تعذر تحميل الملف الشخصي: " + error.message);
   profile = data;
+  const adminCheck = await supabase.from("app_admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
+  isAdmin = !!adminCheck.data;
   await renderHome();
 }
 async function loadConversations() {
@@ -80,9 +82,10 @@ async function loadConversations() {
 }
 async function renderHome() {
   await loadConversations();
-  shell(`<section class="chat-layout"><aside class="sidebar"><div class="profile"><div class="avatar">${esc((profile.display_name || "د").slice(0,1))}</div><div><strong>${esc(profile.display_name)}</strong><small>@${esc(profile.username)}</small></div><button id="logout" class="icon-btn" title="تسجيل الخروج">↪</button></div><div class="search"><input id="search" placeholder="دوّر على سوالفك..."></div><div class="list-heading">المحادثات <button id="new-chat" class="icon-btn" title="محادثة جديدة">＋</button></div><div id="room-list" class="room-list"></div></aside><section class="conversation" id="conversation"><div class="empty-state"><div class="empty-icon">د</div><h2>السوالف تبدي برسالة</h2><p>اختار محادثة أو ابدي محادثة جديدة.</p></div></section></section><div id="notice" class="notice" hidden></div>`);
+  shell(`<section class="chat-layout"><aside class="sidebar"><div class="profile"><div class="avatar">${esc((profile.display_name || "د").slice(0,1))}</div><div><strong>${esc(profile.display_name)}</strong><small>@${esc(profile.username)}</small></div><button id="logout" class="icon-btn" title="تسجيل الخروج">↪</button></div><div class="search"><input id="search" placeholder="دوّر على سوالفك..."></div><div class="list-heading">المحادثات <button id="new-chat" class="icon-btn" title="محادثة جديدة">＋</button></div>${isAdmin ? '<button id="admin-open" class="admin-link">لوحة الإدارة</button>' : ""}<div id="room-list" class="room-list"></div></aside><section class="conversation" id="conversation"><div class="empty-state"><div class="empty-icon">د</div><h2>السوالف تبدي برسالة</h2><p>اختار محادثة أو ابدي محادثة جديدة.</p></div></section></section><div id="notice" class="notice" hidden></div>`);
   drawConversations();
   $("#search").addEventListener("input", drawConversations);
+  $("#admin-open")?.addEventListener("click", renderAdmin);
   $("#new-chat").addEventListener("click", createChat);
   $("#logout").addEventListener("click", async () => { if (liveChannel) await supabase.removeChannel(liveChannel); await supabase.auth.signOut(); session=null; profile=null; renderAuth(); });
   liveChannel = supabase.channel("dazza-live-" + session.user.id)
@@ -97,6 +100,21 @@ function drawConversations() {
   const filtered = conversations.filter(c => (c.title+" "+(c.person?.username || "")).toLowerCase().includes(q));
   list.innerHTML = filtered.map(c => `<button class="room-item" data-id="${c.id}"><span class="avatar">${esc(c.title.slice(0,1))}</span><span class="room-copy"><strong>${esc(c.title)}</strong><small>@${esc(c.person?.username || "")}</small></span></button>`).join("") || '<p class="muted empty-list">ما عندك محادثات حالياً.</p>';
   list.querySelectorAll("[data-id]").forEach(b => b.addEventListener("click", () => openConversation(b.dataset.id)));
+}
+async function renderAdmin() {
+  if (!isAdmin) return;
+  const {data: users, error} = await supabase.from("profiles").select("id,username,display_name,created_at").order("created_at",{ascending:false}).limit(200);
+  if (error) return notice(error.message,"error");
+  shell('<section class="admin-panel"><div class="admin-head"><button id="admin-back" class="text-btn">رجوع للمحادثات</button><span class="eyebrow">DAZZA CONTROL</span></div><h1>لوحة إدارة دَزّة</h1><p class="muted">إدارة الحسابات والملفات الشخصية. عدد الحسابات المعروضة: '+users.length+'</p><div id="notice" class="notice" hidden></div><div class="admin-users">'+users.map(u=>'<article class="admin-user"><div><strong>'+esc(u.display_name)+'</strong><small>@'+esc(u.username)+'</small></div><button class="text-btn edit-user" data-id="'+u.id+'" data-name="'+esc(u.display_name)+'" data-username="'+esc(u.username)+'">تعديل</button></article>').join('')+'</div></section>');
+  $("#admin-back").addEventListener("click",renderHome);
+  root.querySelectorAll(".edit-user").forEach(btn=>btn.addEventListener("click",async()=>{
+    const display_name=prompt("الاسم الظاهر الجديد:",btn.dataset.name); if(display_name===null)return;
+    const username=prompt("اسم المستخدم الجديد:",btn.dataset.username); if(username===null)return;
+    const clean=username.trim().toLowerCase(); if(!/^[a-z][a-z0-9_]{2,29}$/.test(clean))return notice("اسم المستخدم غير صالح.","error");
+    const {error:updateError}=await supabase.from("profiles").update({display_name:display_name.trim(),username:clean}).eq("id",btn.dataset.id);
+    if(updateError)return notice(updateError.message,"error");
+    notice("تم تحديث الحساب."); renderAdmin();
+  }));
 }
 async function createChat() {
   const username = prompt("اكتب اسم المستخدم، بدون @");
