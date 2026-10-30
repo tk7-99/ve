@@ -267,7 +267,7 @@ async function boot() {
 }
 async function navigate(view, param) {
   if (!session) return authView("login");
-  if (view !== "social") await cleanupSocialWorld();
+  await cleanupSocialWorld();
   if (view !== "games" && memoryClock) { clearInterval(memoryClock); memoryClock=null; }
   currentView = view;
   if (param !== undefined) currentProfileId = param;
