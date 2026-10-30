@@ -157,3 +157,22 @@ test("quiz answer results are checked by the host and repeated answers are block
   assert.doesNotMatch(social, /correct: index === question\.correct/);
   assert.match(social, /quiz-answer-result/);
 });
+
+
+test("room chat shows latest messages and avoids duplicate inserts after broadcast errors", async () => {
+  const social = await readFile(new URL("../src/social-world.js", import.meta.url), "utf8");
+  assert.match(social, /order\\("created_at", \\{ ascending: false \\}\\)\\.limit\\(80\\)/);
+  assert.match(social, /form\\.reset\\(\\);\\s*\\$\\('input\\[name="body"\\]', form\\)\\?\\.focus\\(\\);\\s*if \\(roomChannel\\)/);
+  assert.match(social, /Room message saved but realtime delivery failed/);
+  assert.match(social, /item\\.reward_points \\+ ' نقطة رمزية'/);
+});
+
+test("server-side room guards cap voice rooms and normalize timestamps", async () => {
+  const migration = await readFile(new URL("../../supabase/migrations/20261030092000_dazza_room_server_side_guards.sql", import.meta.url), "utf8");
+  assert.match(migration, /dazza_voice_room_max_members/);
+  assert.match(migration, /new\\.expires_at := now\\(\\) \\+ interval '24 hours'/);
+  assert.match(migration, /new\\.created_at := now\\(\\)/);
+  assert.match(migration, /new\\.joined_at := now\\(\\)/);
+  assert.match(migration, /pg_advisory_xact_lock/);
+  assert.match(migration, /interval '10 seconds'/);
+});
