@@ -709,7 +709,8 @@ class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
 
   @override
   void dispose() {
-    playerSubscription?.cancel();
+    final subscription = playerSubscription;
+    if (subscription != null) unawaited(subscription.cancel());
     unawaited(player.dispose());
     final path = temporaryPath;
     if (path != null) unawaited(_deleteTemporaryFile(path));
