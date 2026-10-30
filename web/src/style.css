@@ -801,3 +801,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
  .social-quiz-answers{grid-template-columns:1fr}
  .social-watch-actions button{flex:1}
 }
+
+.social-video-field[hidden]{display:none!important}
