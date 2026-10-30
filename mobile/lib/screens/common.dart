@@ -12,6 +12,10 @@ void showFailure(BuildContext context, Session s, Object error) {
       'تعذّر إرسال الرمز إلى بريدك. حاول لاحقاً.',
       'The verification email could not be sent. Try again later.',
     ),
+    'attachment_download_failed' => s.text(
+      'تعذّر تنزيل المرفق أو فك تشفيره.',
+      'The attachment could not be downloaded or decrypted.',
+    ),
     'profile_required' => s.text(
       'هذا حساب جديد. اكتب الاسم واسم المستخدم حتى نكمل التسجيل.',
       'This is a new account. Enter your name and username to finish registration.',
