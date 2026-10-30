@@ -1,0 +1,34 @@
+{
+  "product": "DAZZA",
+  "version": "0.1.0",
+  "date": "2026-10-30",
+  "backend_unit_tests": {
+    "passed": 16,
+    "real_sms": false,
+    "real_database": false
+  },
+  "flutter_tests": {
+    "passed": 2
+  },
+  "flutter_analyze": "No issues found",
+  "flutter_version": "3.47.9",
+  "dart_version": "3.13.7",
+  "config_checks": [
+    "YAML parse",
+    "native manifests XML parse",
+    "Python compile",
+    "bootstrap permissions",
+    "bootstrap overwrite rejection"
+  ],
+  "not_run": [
+    "Docker service startup",
+    "SMS delivery",
+    "Android build",
+    "iOS build",
+    "two-device messaging",
+    "E2EE integration",
+    "calls",
+    "load tests"
+  ],
+  "production_ready": false
+}

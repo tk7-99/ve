@@ -1,0 +1,53 @@
+name: dazza
+services:
+  postgres:
+    image: postgres:16.9-alpine
+    environment:
+      POSTGRES_USER: dazza
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run bootstrap first}
+      POSTGRES_DB: synapse
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/01-identity.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U dazza -d synapse']
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --save, '', --appendonly, 'no']
+    restart: unless-stopped
+  synapse:
+    image: matrixdotorg/synapse:v1.164.1
+    volumes:
+      - ./infra/generated/homeserver.yaml:/data/homeserver.yaml:ro
+      - ./infra/log.config:/data/log.config:ro
+      - matrix:/data
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+  gateway:
+    build: ./gateway
+    env_file: .env
+    depends_on:
+      postgres: {condition: service_healthy}
+      synapse: {condition: service_started}
+      redis: {condition: service_started}
+    restart: unless-stopped
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      MATRIX_DOMAIN: ${MATRIX_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on: [gateway, synapse]
+    restart: unless-stopped
+volumes:
+  database:
+  matrix:
+  caddy:

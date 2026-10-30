@@ -1,0 +1,24 @@
+{$MATRIX_DOMAIN} {
+  header Strict-Transport-Security "max-age=31536000"
+  request_body {
+    max_size 30MB
+  }
+  @client path /_matrix/client/* /_matrix/media/*
+  handle @client {
+    reverse_proxy synapse:8008
+  }
+  handle /.well-known/matrix/client {
+    header Content-Type application/json
+    respond `{ "m.homeserver": { "base_url": "https://{$MATRIX_DOMAIN}" } }`
+  }
+  handle {
+    respond 404
+  }
+}
+{$API_DOMAIN} {
+  header Strict-Transport-Security "max-age=31536000"
+  request_body {
+    max_size 8KB
+  }
+  reverse_proxy gateway:8000
+}
