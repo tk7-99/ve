@@ -71,6 +71,69 @@ async def protect_response(request, call_next):
 async def health():
     return {'service': 'DAZZA identity', 'status': 'running'}
 
+@app.post('/v1/auth/email/start', status_code=202)
+async def email_start(body: EmailStart, request: Request):
+    state = request.app.state
+    email = body.email.strip().lower()
+    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
+        raise HTTPException(422, 'invalid_email')
+    if not (state.settings.resend_api_key.get_secret_value() and state.settings.resend_from):
+        raise HTTPException(503, 'email_not_configured')
+    identity = digest(state.settings.identity_secret.get_secret_value(), 'email', email)
+    ip = digest(state.settings.identity_secret.get_secret_value(), 'ip', request.client.host)
+    await rate_limit(state.redis, 'email-ip:' + ip, 10, 3600)
+    await rate_limit(state.redis, 'email-address:' + identity, 5, 3600)
+    if not await state.redis.set('email-cooldown:' + identity, '1', nx=True, ex=60):
+        raise HTTPException(429, 'wait_before_resend', headers={'Retry-After': '60'})
+    previous = await state.redis.get('email-active:' + identity)
+    if previous: await state.redis.delete('email-challenge:' + previous)
+    challenge = secrets.token_urlsafe(24)
+    code = f'{secrets.randbelow(1000000):06d}'
+    try:
+        await state.providers.send_email(email, code)
+    except Exception:
+        await state.redis.delete('email-cooldown:' + identity)
+        raise HTTPException(502, 'email_send_failed')
+    code_hash = digest(state.settings.identity_secret.get_secret_value(), 'email-code', code)
+    await state.redis.set('email-challenge:' + challenge, json.dumps({'email': email, 'identity': identity, 'code_hash': code_hash}), ex=300)
+    await state.redis.set('email-active:' + identity, challenge, ex=300)
+    return {'challenge_id': challenge, 'expires_in': 300, 'resend_after': 60}
+
+@app.post('/v1/auth/email/verify')
+async def email_verify(body: EmailFinish, request: Request):
+    state = request.app.state
+    key = 'email-challenge:' + body.challenge_id
+    raw = await state.redis.get(key)
+    if not raw: raise HTTPException(401, 'challenge_expired')
+    data = json.loads(raw); identity = data['identity']
+    await rate_limit(state.redis, 'email-verify:' + identity, 10, 600)
+    lock = 'email-verify-lock:' + identity; owner = secrets.token_hex(16)
+    if not await state.redis.set(lock, owner, nx=True, ex=120): raise HTTPException(409, 'verification_in_progress')
+    try:
+        raw = await state.redis.get(key)
+        if not raw: raise HTTPException(401, 'challenge_expired')
+        data = json.loads(raw)
+        expected = digest(state.settings.identity_secret.get_secret_value(), 'email-code', body.code)
+        if not secrets.compare_digest(expected, data['code_hash']): raise HTTPException(401, 'invalid_or_expired_code')
+        await state.redis.delete(key)
+        async with state.db.acquire() as db:
+            async with db.transaction():
+                await db.execute('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', identity)
+                row = await db.fetchrow('SELECT username, display_name FROM profiles WHERE identity_hash=$1', identity)
+                if row is None:
+                    try: await db.execute('INSERT INTO profiles(identity_hash,username,display_name) VALUES($1,$2,$3)', identity, body.username, body.display_name)
+                    except asyncpg.UniqueViolationError: raise HTTPException(409, 'username_taken_request_new_code')
+                    username, display_name = body.username, body.display_name
+                else: username, display_name = row['username'], row['display_name']
+                session = await state.providers.login(identity, body.device_name)
+                matrix_user = session['user_id']
+                await db.execute('UPDATE profiles SET matrix_user_id=$1 WHERE identity_hash=$2', matrix_user, identity)
+        if row is None:
+            await state.http.put(state.settings.matrix_internal_url + '/_matrix/client/v3/profile/' + matrix_user + '/displayname', json={'displayname': display_name}, headers={'Authorization': 'Bearer ' + session['access_token']})
+        return {**session, 'homeserver': state.settings.matrix_public_url, 'username': username, 'display_name': display_name}
+    except httpx.HTTPError: raise HTTPException(502, 'upstream_unavailable')
+    finally: await state.redis.eval(UNLOCK_SCRIPT, 1, lock, owner)
+
 @app.post('/v1/auth/start', status_code=202)
 async def start(body: Start, request: Request):
     state = request.app.state
