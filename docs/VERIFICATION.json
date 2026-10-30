@@ -1,34 +1,31 @@
 {
   "product": "DAZZA",
-  "version": "0.1.0",
+  "version": "0.2.0-dev",
   "date": "2026-10-30",
-  "backend_unit_tests": {
-    "passed": 16,
-    "real_sms": false,
-    "real_database": false
+  "authentication": {
+    "method": "email_otp_only",
+    "provider": "Resend",
+    "server_credentials_configured": false,
+    "real_email_delivery_tested": false
   },
-  "flutter_tests": {
-    "passed": 2
+  "validation": {
+    "status": "not_rerun_after_email_only_changes",
+    "previous_recorded_backend_tests": 16,
+    "previous_recorded_flutter_tests": 2,
+    "previous_recorded_flutter_analyze": "No issues found"
   },
-  "flutter_analyze": "No issues found",
-  "flutter_version": "3.47.9",
-  "dart_version": "3.13.7",
-  "config_checks": [
-    "YAML parse",
-    "native manifests XML parse",
-    "Python compile",
-    "bootstrap permissions",
-    "bootstrap overwrite rejection"
-  ],
   "not_run": [
+    "Python tests after email-only migration",
+    "Flutter analyze and tests after login screen change",
     "Docker service startup",
-    "SMS delivery",
+    "Resend email delivery",
     "Android build",
     "iOS build",
     "two-device messaging",
-    "E2EE integration",
+    "E2EE integration and device verification",
     "calls",
-    "load tests"
+    "load tests",
+    "backup and restore"
   ],
   "production_ready": false
 }
