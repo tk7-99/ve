@@ -665,9 +665,10 @@ class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
         final media = await widget.loadAttachment();
         if (media == null) throw StateError('attachment unavailable');
         final directory = await getTemporaryDirectory();
+        final extension = audioExtensionForMime(media.mimeType);
         final file = File(p.join(
           directory.path,
-          'dazza-playback-${DateTime.now().microsecondsSinceEpoch}.m4a',
+          'dazza-playback-${DateTime.now().microsecondsSinceEpoch}$extension',
         ));
         await file.writeAsBytes(media.bytes, flush: true);
         temporaryPath = file.path;
@@ -744,4 +745,16 @@ class _AudioAttachmentPlayerState extends State<_AudioAttachmentPlayer> {
       ),
     ],
   );
+}
+
+String audioExtensionForMime(String mimeType) {
+  return switch (mimeType.toLowerCase()) {
+    'audio/mp4' || 'audio/x-m4a' => '.m4a',
+    'audio/mpeg' || 'audio/mp3' => '.mp3',
+    'audio/aac' => '.aac',
+    'audio/ogg' || 'application/ogg' => '.ogg',
+    'audio/wav' || 'audio/x-wav' => '.wav',
+    'audio/webm' => '.webm',
+    _ => '.audio',
+  };
 }
