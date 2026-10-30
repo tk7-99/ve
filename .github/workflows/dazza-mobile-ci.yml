@@ -41,6 +41,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run gateway tests
         working-directory: gateway
+        env:
+          PYTHONPATH: .
         run: pytest -q
 
   flutter-checks:
