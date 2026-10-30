@@ -35,7 +35,7 @@ function renderAuth(mode = "login") {
       if (signup) {
         const username = $("#username").value.trim().toLowerCase();
         const display_name = $("#display").value.trim();
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username, display_name } } });
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { username, display_name }, emailRedirectTo: window.location.origin } });
         if (error) throw error;
         if (data.session) await enter(data.session);
         else notice("تم إنشاء الطلب. إذا طلب منك تأكيد البريد، افتح رسالة Supabase ثم ارجع وسجّل دخولك. الإرسال المجاني محدود من مزوّد Supabase الافتراضي.", "info");
@@ -121,12 +121,14 @@ async function createChat() {
 }
 async function openConversation(id) {
   activeConversation = id;
+  $(".chat-layout")?.classList.add("show-conversation");
   const conv = conversations.find(c=>c.id===id);
   const {data: messages,error} = await supabase.from("messages").select("*").eq("conversation_id",id).order("created_at",{ascending:true}).limit(200);
   if (error) return notice(error.message,"error");
   const person = conv?.person;
-  $("#conversation").innerHTML = `<header class="conversation-head"><div class="avatar">${esc((conv?.title || "د").slice(0,1))}</div><div><strong>${esc(conv?.title || "محادثة")}</strong><small>@${esc(person?.username || "")}</small></div></header><div class="messages" id="messages">${(messages||[]).map(messageHtml).join("")}</div><form id="send-form" class="composer"><input id="message" placeholder="اكتب رسالتك..." autocomplete="off" maxlength="5000" required><button class="primary" type="submit">دزّ</button></form>`;
+  $("#conversation").innerHTML = `<header class="conversation-head"><button id="back-to-list" class="icon-btn mobile-back" type="button" aria-label="رجوع">‹</button><div class="avatar">${esc((conv?.title || "د").slice(0,1))}</div><div><strong>${esc(conv?.title || "محادثة")}</strong><small>@${esc(person?.username || "")}</small></div></header><div class="messages" id="messages">${(messages||[]).map(messageHtml).join("")}</div><form id="send-form" class="composer"><input id="message" placeholder="اكتب رسالتك..." autocomplete="off" maxlength="5000" required><button class="primary" type="submit">دزّ</button></form>`;
   const box=$("#messages"); box.scrollTop=box.scrollHeight;
+  $("#back-to-list").addEventListener("click", () => $(".chat-layout")?.classList.remove("show-conversation"));
   $("#send-form").addEventListener("submit",async e=>{
     e.preventDefault(); const input=$("#message"), body=input.value.trim(); if(!body)return;
     const btn=e.submitter; btn.disabled=true;
