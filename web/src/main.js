@@ -350,6 +350,281 @@ async function renderReels() {
     '<p>' + esc(post.caption) + '</p><div class="reel-actions"><button class="post-action ' + (post.liked ? "is-liked" : "") + '" data-action="toggle-like" data-id="' + post.id + '" data-liked="' + post.liked + '"><span>' + (post.liked ? "♥" : "♡") + '</span><b>' + post.likesCount + '</b></button><button class="post-action" data-action="view-comments" data-id="' + post.id + '">تعليقات ' + post.commentsCount + '</button></div></div></article>').join("") ||
     '<div class="empty-state"><h2>ماكو مقاطع بعد</h2><p>انشر فيديو حتى يظهر هنا.</p><button class="btn-primary" data-action="new-post">نشر فيديو</button></div>'));
 }
+
+const QUIZ_BANK = [
+  { q:"ما هو أكبر كوكب في المجموعة الشمسية؟", a:["الأرض","المشتري","زحل","نبتون"], correct:1, why:"المشتري هو الأكبر حجماً وكتلةً." },
+  { q:"كم عدد أضلاع الشكل السداسي؟", a:["5","6","7","8"], correct:1, why:"السداسي له ستة أضلاع." },
+  { q:"ما عاصمة اليابان؟", a:["أوساكا","كيوتو","طوكيو","هيروشيما"], correct:2, why:"طوكيو هي عاصمة اليابان." },
+  { q:"أي عنصر رمزه الكيميائي O؟", a:["الذهب","الأكسجين","الحديد","الهيدروجين"], correct:1, why:"الرمز O يشير إلى الأكسجين." },
+  { q:"كم دقيقة في ساعتين ونصف؟", a:["120","130","150","180"], correct:2, why:"2.5 × 60 = 150 دقيقة." },
+  { q:"ما الحيوان المعروف بسفينة الصحراء؟", a:["الحصان","الجمل","الفيل","الغزال"], correct:1, why:"الجمل متكيف مع البيئة الصحراوية." },
+  { q:"ما اللغة الرسمية في البرازيل؟", a:["الإسبانية","البرتغالية","الفرنسية","الإنجليزية"], correct:1, why:"البرتغالية هي اللغة الرسمية في البرازيل." },
+  { q:"أي محيط هو الأكبر على الأرض؟", a:["الأطلسي","الهندي","المتجمد الشمالي","الهادئ"], correct:3, why:"المحيط الهادئ هو الأكبر مساحةً." },
+  { q:"ما ناتج 12 × 12؟", a:["124","132","144","154"], correct:2, why:"12 في 12 تساوي 144." },
+  { q:"أي كوكب يُعرف بالكوكب الأحمر؟", a:["الزهرة","المريخ","عطارد","أورانوس"], correct:1, why:"لون المريخ المائل للأحمر بسبب أكاسيد الحديد." }
+];
+function gameScore(name) {
+  const scores = JSON.parse(storageGet("dazza-game-scores", "{}") || "{}");
+  return Number(scores[name] || 0);
+}
+function saveGameScore(name, score, mode = "max") {
+  const scores = JSON.parse(storageGet("dazza-game-scores", "{}") || "{}");
+  scores[name] = mode === "sum" ? (Number(scores[name] || 0) + score) : Math.max(Number(scores[name] || 0), score);
+  storageSet("dazza-game-scores", JSON.stringify(scores));
+}
+function renderGames() {
+  if (memoryClock) { clearInterval(memoryClock); memoryClock = null; }
+  if (activeGame !== "hub") { renderGame(activeGame); return; }
+  const games = [
+    ["memory","ذاكرة الكواكب","طابق الرموز بأقل عدد من المحاولات.","🧠","تركيز"],
+    ["ttt","إكس أو","واجه خصماً ذكياً في لعبة سريعة.","✕","استراتيجية"],
+    ["2048","2048","ادمج الأرقام للوصول إلى 2048.","🔢","ألغاز"],
+    ["rps","حجر ورقة مقص","تحدّ خصم الكمبيوتر وارفع نتيجتك.","✊","سريعة"],
+    ["quiz","اختبار المعلومات","خمسة أسئلة جديدة في كل جولة.","⚡","ثقافة"]
+  ];
+  const best = JSON.parse(storageGet("dazza-game-scores","{}") || "{}");
+  showContent('<div class="games-hero"><div class="games-hero-copy"><span class="eyebrow">DAZZA ARCADE · FREE TO PLAY</span><h1>مساحة لعبك تبدأ هنا.</h1><p>ألعاب خفيفة وسريعة تعمل داخل دَزّة بدون تنزيل إضافي أو اشتراك.</p><div class="hero-stats"><span><b>05</b><small>ألعاب متاحة</small></span><span><b>0</b><small>تكلفة لعب</small></span><span><b>∞</b><small>محاولات</small></span></div></div><div class="games-orb">✦</div></div><div class="page-heading"><div><h2>اختر لعبتك</h2><p>النتائج الأفضل تُحفظ على هذا الجهاز.</p></div><span class="free-pill">مجاني</span></div><div class="games-grid">' + games.map(([id,title,description,icon,tag],index)=>'<button class="game-card game-card-'+id+'" data-action="launch-game" data-game="'+id+'"><span class="game-card-top"><i>'+icon+'</i><small>'+tag+'</small></span><strong>'+title+'</strong><p>'+description+'</p><span class="game-card-bottom"><span>أفضل نتيجة: '+(best[id] ?? "—")+'</span><b>العب الآن ↗</b></span></button>').join("") + '</div><section class="arcade-note"><span>✧</span><div><strong>اللعب النظيف</strong><p>الألعاب حالياً فردية ومحلية. لا نطلب صلاحيات خاصة ولا نرسل نتائجك إلى خادم خارجي.</p></div></section>');
+}
+function renderGame(id) {
+  activeGame=id;
+  if(memoryClock){clearInterval(memoryClock);memoryClock=null;}
+  if(id==="memory") {
+    const symbols=["🚀","🪐","🎮","🎧","🌙","⚡","👾","💎"];
+    const cards=[...symbols,...symbols].map((value,index)=>({id:index,value})).sort(()=>Math.random()-.5);
+    gameState={cards,flipped:[],matched:[],moves:0,locked:false,elapsed:0};
+    renderMemory();
+    memoryClock=setInterval(()=>{
+      if(activeGame!=="memory"||!gameState){clearInterval(memoryClock);memoryClock=null;return;}
+      if(gameState.matched.length===8){clearInterval(memoryClock);memoryClock=null;return;}
+      gameState.elapsed++;
+      const timer=$("#memory-time"); if(timer)timer.textContent=formatClock(gameState.elapsed);
+    },1000);
+    return;
+  }
+  if(id==="ttt"){gameState={board:Array(9).fill(""),turn:"X",winner:null,thinking:false};return renderTicTacToe();}
+  if(id==="rps"){gameState={wins:0,losses:0,draws:0,last:null};return renderRps();}
+  if(id==="quiz"){quizQuestions=[...QUIZ_BANK].sort(()=>Math.random()-.5).slice(0,5);quizIndex=0;quizScore=0;quizSelected=null;return renderQuiz();}
+  if(id==="2048"){
+    const board=Array.from({length:4},()=>Array(4).fill(0));
+    add2048Tile(board);add2048Tile(board);
+    gameState={board,score:0,over:false,won:false};
+    return render2048();
+  }
+  renderGames();
+}
+function gameLayout(title,desc,body) {
+  return '<div class="game-page"><div class="game-page-head"><button class="back-link" data-action="games-home">← كل الألعاب</button><span class="game-kicker">DAZZA ARCADE</span></div><section class="game-panel"><div class="game-panel-head"><div><h1>'+title+'</h1><p>'+desc+'</p></div><button class="icon-action" data-action="game-reset" aria-label="إعادة اللعب">↻</button></div>'+body+'</section><p class="game-footnote">لعبة مجانية داخل دَزّة · النتائج محفوظة محلياً على جهازك.</p></div>';
+}
+function formatClock(seconds) {
+  const mins=String(Math.floor(seconds/60)).padStart(2,"0");
+  const secs=String(seconds%60).padStart(2,"0");
+  return mins+":"+secs;
+}
+function renderMemory() {
+  if(!gameState)return;
+  const done=gameState.matched.length===8;
+  showContent(gameLayout("ذاكرة الكواكب","اكشف البطاقات وطابق الرموز المتشابهة.",'<div class="game-metrics"><span>المحاولات <b>'+gameState.moves+'</b></span><span>الوقت <b id="memory-time">'+formatClock(gameState.elapsed)+'</b></span><span>الأزواج <b>'+gameState.matched.length+'/8</b></span></div><div class="memory-grid">'+gameState.cards.map((card,index)=>'<button class="memory-card '+(gameState.flipped.includes(index)||gameState.matched.includes(index)?"revealed":"")+' '+(gameState.matched.includes(index)?"matched":"")+'" data-action="memory-card" data-index="'+index+'" aria-label="بطاقة '+(index+1)+'">'+(gameState.flipped.includes(index)||gameState.matched.includes(index)?card.value:"✦")+'</button>').join("")+'</div>'+(done?'<div class="game-result"><strong>ممتاز! خلصت الجولة.</strong><p>أنهيتها بـ '+gameState.moves+' محاولة خلال '+formatClock(gameState.elapsed)+'.</p></div>':'<p class="game-hint">اضغط بطاقتين في كل مرة وحاول تتذكر أماكن الرموز.</p>')));
+  if(done){saveGameScore("memory",Math.max(1,1000-gameState.moves*10-gameState.elapsed));if(memoryClock){clearInterval(memoryClock);memoryClock=null;}}
+}
+function flipMemoryCard(index) {
+  if(!gameState||gameState.locked||gameState.flipped.includes(index)||gameState.matched.includes(index))return;
+  gameState.flipped.push(index);
+  if(gameState.flipped.length===2){
+    gameState.moves++;
+    const [first,second]=gameState.flipped;
+    if(gameState.cards[first].value===gameState.cards[second].value){
+      gameState.matched.push(first,second);
+      gameState.flipped=[];
+      renderMemory();
+      return;
+    }
+    gameState.locked=true;
+    renderMemory();
+    setTimeout(()=>{if(!gameState||activeGame!=="memory")return;gameState.flipped=[];gameState.locked=false;renderMemory();},850);
+    return;
+  }
+  renderMemory();
+}
+function tttWinner(board) {
+  const lines=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  for(const [a,b,c] of lines)if(board[a]&&board[a]===board[b]&&board[a]===board[c])return board[a];
+  return board.every(Boolean)?"draw":null;
+}
+function minimax(board,isMaximizing,depth=0) {
+  const winner=tttWinner(board);
+  if(winner==="O")return 10-depth;
+  if(winner==="X")return depth-10;
+  if(winner==="draw")return 0;
+  const moves=[];
+  board.forEach((v,i)=>{if(!v){board[i]=isMaximizing?"O":"X";const score=minimax(board,!isMaximizing,depth+1);board[i]="";moves.push({index:i,score});}});
+  if(!moves.length)return 0;
+  return isMaximizing?Math.max(...moves.map(x=>x.score)):Math.min(...moves.map(x=>x.score));
+}
+function bestTttMove(board) {
+  let best=-Infinity,index=-1;
+  board.forEach((v,i)=>{if(!v){board[i]="O";const score=minimax(board,false);board[i]="";if(score>best){best=score;index=i;}}});
+  return index;
+}
+function renderTicTacToe() {
+  if(!gameState)return;
+  const winner=gameState.winner;
+  const result=winner?(winner==="draw"?"تعادل! جولة متكافئة.":winner==="X"?"فزت على الكمبيوتر!":"هذه المرة الكمبيوتر فاز."):"أنت X · الكمبيوتر O";
+  showContent(gameLayout("إكس أو","تحدّ خصم الكمبيوتر. العب بذكاء وخذ الوسط إذا استطعت.",'<div class="ttt-status">'+(gameState.thinking?"الكمبيوتر يفكر…":result)+'</div><div class="ttt-board">'+gameState.board.map((v,i)=>'<button class="ttt-cell '+(v?"mark-"+v.toLowerCase():"")+'" data-action="ttt-cell" data-index="'+i+'" '+(v||winner||gameState.thinking?"disabled":"")+'>'+v+'</button>').join("")+'</div><div class="game-result"><span>انتصاراتك <b>'+gameScore("ttt")+'</b></span><p>اللعبة تعمل دون اتصال.</p></div>'));
+}
+function playTicTacToe(index) {
+  if(!gameState||gameState.winner||gameState.thinking||gameState.board[index])return;
+  gameState.board[index]="X";
+  gameState.winner=tttWinner(gameState.board);
+  if(gameState.winner){if(gameState.winner==="X")saveGameScore("ttt",gameScore("ttt")+1);renderTicTacToe();return;}
+  gameState.thinking=true;renderTicTacToe();
+  setTimeout(()=>{
+    if(!gameState||activeGame!=="ttt")return;
+    const move=bestTttMove(gameState.board);
+    if(move>=0)gameState.board[move]="O";
+    gameState.winner=tttWinner(gameState.board);
+    gameState.thinking=false;
+    renderTicTacToe();
+  },380);
+}
+function renderRps() {
+  const s=gameState;
+  const last=s.last?'<div class="rps-result"><span>'+s.last.you+'</span><b>'+s.last.result+'</b><span>'+s.last.cpu+'</span></div>':'<p class="game-hint">اختر حركتك لبدء الجولة.</p>';
+  showContent(gameLayout("حجر ورقة مقص","اختبر حظك ضد الكمبيوتر واجمع الانتصارات.",'<div class="rps-score"><span>فوز <b>'+s.wins+'</b></span><span>تعادل <b>'+s.draws+'</b></span><span>خسارة <b>'+s.losses+'</b></span></div>'+last+'<div class="rps-choices"><button data-action="rps-choice" data-choice="rock">✊<small>حجر</small></button><button data-action="rps-choice" data-choice="paper">✋<small>ورقة</small></button><button data-action="rps-choice" data-choice="scissors">✌<small>مقص</small></button></div>'));
+}
+function playRps(choice) {
+  if(!gameState)return;
+  const choices=["rock","paper","scissors"],icons={rock:"✊",paper:"✋",scissors:"✌"};
+  const cpu=choices[Math.floor(Math.random()*3)];
+  let result="تعادل";
+  if(choice!==cpu){
+    const wins=(choice==="rock"&&cpu==="scissors")||(choice==="paper"&&cpu==="rock")||(choice==="scissors"&&cpu==="paper");
+    result=wins?"فزت!":"الكمبيوتر فاز";
+    if(wins)gameState.wins++;else gameState.losses++;
+  } else gameState.draws++;
+  gameState.last={you:icons[choice],cpu:icons[cpu],result};
+  if(gameState.wins>gameScore("rps"))saveGameScore("rps",gameState.wins);
+  renderRps();
+}
+function renderQuiz() {
+  if(quizIndex>=quizQuestions.length){
+    saveGameScore("quiz",quizScore);
+    showContent(gameLayout("نتيجة التحدّي","انتهت جولتك الحالية.",'<div class="quiz-finish"><span>🏆</span><strong>'+quizScore+' / '+quizQuestions.length+'</strong><p>'+(quizScore>=4?"ممتاز! ثقافتك قوية.":quizScore>=2?"نتيجة حلوة، جرب مرة ثانية.":"لا بأس، التعلّم هو المكسب.")+'</p><button class="btn-primary" data-action="game-reset">جولة جديدة</button></div>'));
+    return;
+  }
+  const item=quizQuestions[quizIndex];
+  showContent(gameLayout("اختبار المعلومات","سؤال "+(quizIndex+1)+" من "+quizQuestions.length+" · إجابات سريعة.",'<div class="quiz-progress"><span style="width:'+((quizIndex)/quizQuestions.length*100)+'%"></span></div><div class="quiz-scoreline">النقاط الحالية <b>'+quizScore+'</b></div><h2 class="quiz-question">'+item.q+'</h2><div class="quiz-options">'+item.a.map((answer,index)=>'<button class="quiz-option '+(quizSelected!==null?(index===item.correct?"correct":index===quizSelected?"wrong":""):"")+'" data-action="quiz-answer" data-index="'+index+'" '+(quizSelected!==null?"disabled":"")+'>'+answer+'</button>').join("")+'</div>'+(quizSelected!==null?'<div class="quiz-feedback">'+(quizSelected===item.correct?"إجابة صحيحة! ":"ليست الإجابة الصحيحة. ")+item.why+'<button class="btn-primary" data-action="quiz-next">السؤال التالي</button></div>':''));
+}
+function answerQuiz(index) {
+  if(quizSelected!==null||!quizQuestions[quizIndex])return;
+  quizSelected=index;
+  if(index===quizQuestions[quizIndex].correct)quizScore++;
+  renderQuiz();
+}
+function nextQuizQuestion(){quizIndex++;quizSelected=null;renderQuiz();}
+function add2048Tile(board) {
+  const empty=[];
+  board.forEach((row,r)=>row.forEach((value,c)=>{if(!value)empty.push([r,c]);}));
+  if(!empty.length)return;
+  const [r,c]=empty[Math.floor(Math.random()*empty.length)];
+  board[r][c]=Math.random()<.9?2:4;
+}
+function merge2048Line(line) {
+  const values=line.filter(Boolean);
+  const result=[];let gain=0;
+  for(let i=0;i<values.length;i++){
+    if(values[i]===values[i+1]){const next=values[i]*2;result.push(next);gain+=next;i++;}
+    else result.push(values[i]);
+  }
+  while(result.length<4)result.push(0);
+  return {line:result,gain};
+}
+function is2048Over(board) {
+  for(let r=0;r<4;r++)for(let c=0;c<4;c++){
+    if(!board[r][c])return false;
+    if(c<3&&board[r][c]===board[r][c+1])return false;
+    if(r<3&&board[r][c]===board[r+1][c])return false;
+  }
+  return true;
+}
+function move2048(direction) {
+  if(!gameState||gameState.over)return;
+  const old=JSON.stringify(gameState.board),next=gameState.board.map(row=>row.slice());
+  let gain=0;
+  for(let i=0;i<4;i++){
+    let line=[];
+    if(direction==="left"||direction==="right")line=next[i].slice();
+    else line=next.map(row=>row[i]);
+    if(direction==="right"||direction==="down")line.reverse();
+    const merged=merge2048Line(line);gain+=merged.gain;line=merged.line;
+    if(direction==="right"||direction==="down")line.reverse();
+    if(direction==="left"||direction==="right")next[i]=line;
+    else for(let r=0;r<4;r++)next[r][i]=line[r];
+  }
+  if(JSON.stringify(next)===old)return;
+  gameState.board=next;gameState.score+=gain;add2048Tile(gameState.board);
+  if(gameState.board.flat().includes(2048))gameState.won=true;
+  gameState.over=is2048Over(gameState.board);
+  const best=gameScore("2048");if(gameState.score>best)saveGameScore("2048",gameState.score);
+  render2048();
+}
+function render2048() {
+  if(!gameState)return;
+  const tiles=gameState.board.flat().map(value=>'<div class="tile tile-'+(value||0)+'">'+(value||"")+'</div>').join("");
+  showContent(gameLayout("2048","حرّك الأرقام وادمج المربعات المتشابهة حتى تصل إلى 2048.",'<div class="game-metrics"><span>النقاط <b>'+gameState.score+'</b></span><span>أفضل نتيجة <b>'+gameScore("2048")+'</b></span></div><div class="board-2048">'+tiles+'</div><div class="game-controls"><button data-action="game-move" data-direction="up">↑</button><div><button data-action="game-move" data-direction="left">←</button><button data-action="game-move" data-direction="down">↓</button><button data-action="game-move" data-direction="right">→</button></div></div>'+(gameState.won?'<div class="game-result"><strong>وصلت إلى 2048! إنجاز ممتاز.</strong></div>':"")+(gameState.over?'<div class="game-result"><strong>انتهت الحركات. نتيجتك '+gameState.score+'.</strong><button class="btn-primary" data-action="game-reset">حاول مجدداً</button></div>':'<p class="game-hint">استخدم الأسهم أو أزرار الاتجاهات. على الهاتف استخدم لوحة التحكم.</p>')));
+}
+function onGameKeydown(event) {
+  if(currentView!=="games"||activeGame!=="2048")return;
+  if(["INPUT","TEXTAREA","SELECT"].includes(event.target?.tagName))return;
+  const map={ArrowUp:"up",ArrowDown:"down",ArrowLeft:"left",ArrowRight:"right"};
+  if(map[event.key]){event.preventDefault();move2048(map[event.key]);}
+}
+function resetGame() {
+  if(activeGame==="hub")return renderGames();
+  if(activeGame==="ttt"||activeGame==="memory"||activeGame==="2048"||activeGame==="rps"||activeGame==="quiz")return renderGame(activeGame);
+  renderGames();
+}
+async function renderSettings() {
+  const avatar=avatarUrl(profile.avatar_path);
+  const theme=storageGet("dazza-theme","midnight");
+  showContent('<div class="page-heading"><div><h1>الإعدادات والحساب</h1><p>تحكم بتجربتك داخل دَزّة.</p></div></div><section class="settings-card"><div class="settings-account"><span class="profile-avatar small-avatar">'+(avatar?'<img src="'+esc(avatar)+'" alt="">':initials(profile.display_name))+'</span><div><strong>'+esc(profile.display_name)+'</strong><small>@'+esc(profile.username)+'</small><small>'+esc(session.user.email||"")+'</small></div></div><button class="btn-secondary" data-action="edit-profile">تعديل بيانات الملف</button></section><section class="settings-card"><h2>المظهر</h2><p>اختر الشكل الذي يناسب عينيك.</p><div class="theme-choices"><button data-action="set-theme" data-theme="midnight" class="'+(theme==="midnight"?"selected":"")+'">ليلي فضائي</button><button data-action="set-theme" data-theme="daylight" class="'+(theme==="daylight"?"selected":"")+'">نهاري هادئ</button></div></section><section class="settings-card"><h2>التطبيق</h2><p>ثبّت دَزّة على الشاشة الرئيسية للوصول السريع. الملفات الأساسية قابلة للتخزين المؤقت، لكن المحتوى والحساب يحتاجان اتصالاً.</p><button class="btn-secondary" data-action="install-app">تثبيت دَزّة</button></section><section class="settings-card settings-danger"><h2>الجلسة والأمان</h2><p>تسجيل الخروج من هذا الجهاز فقط، ولن يتم إنهاء جلساتك على الأجهزة الأخرى.</p><button class="btn-danger" data-action="logout">تسجيل الخروج من الحساب</button></section>');
+}
+async function renderTools() {
+  const notes=JSON.parse(storageGet("dazza-notes","[]")||"[]");
+  showContent('<div class="page-heading"><div><h1>مختبر دَزّة</h1><p>أدوات سريعة ومجانية، تعمل مباشرة على جهازك.</p></div><span class="free-pill">بدون اشتراك</span></div><div class="tools-grid"><section class="tool-card"><span class="tool-icon">∑</span><h2>حاسبة سريعة</h2><form id="calculator-form" class="tool-form"><input type="number" step="any" name="a" placeholder="الرقم الأول" required><select name="operator"><option value="+">جمع +</option><option value="-">طرح −</option><option value="*">ضرب ×</option><option value="/">قسمة ÷</option><option value="%">باقي القسمة %</option></select><input type="number" step="any" name="b" placeholder="الرقم الثاني" required><button class="btn-primary" type="submit">احسب</button></form><output id="calculator-output" class="tool-output">النتيجة تظهر هنا</output></section><section class="tool-card"><span class="tool-icon">⇄</span><h2>تحويل الوحدات</h2><form id="converter-form" class="tool-form"><input name="amount" type="number" step="any" placeholder="القيمة" required><select name="conversion"><option value="km-mi">كيلومتر ← ميل</option><option value="mi-km">ميل ← كيلومتر</option><option value="kg-lb">كيلوغرام ← باوند</option><option value="lb-kg">باوند ← كيلوغرام</option><option value="c-f">مئوية ← فهرنهايت</option><option value="f-c">فهرنهايت ← مئوية</option><option value="cm-in">سنتيمتر ← إنش</option><option value="in-cm">إنش ← سنتيمتر</option></select><button class="btn-primary" type="submit">حوّل</button></form><output id="converter-output" class="tool-output">اختر الوحدة وأدخل القيمة</output></section><section class="tool-card"><span class="tool-icon">✎</span><h2>ملاحظاتك الخاصة</h2><p>تُحفظ الملاحظات على هذا الجهاز فقط، ولا ترفع إلى الخادم.</p><textarea id="quick-note" rows="3" maxlength="1000" placeholder="اكتب فكرة أو ملاحظة..."></textarea><button class="btn-primary" data-action="save-note">حفظ الملاحظة</button><div class="notes-list">'+(notes.slice(0,8).map((note,index)=>'<div class="note-item"><p>'+esc(note.text)+'</p><small>'+esc(note.date)+'</small><button data-action="delete-note" data-index="'+index+'" aria-label="حذف">×</button></div>').join("")||'<small class="muted">لا توجد ملاحظات محفوظة.</small>')+'</div></section><section class="tool-card"><span class="tool-icon">◷</span><h2>مؤقّت التركيز</h2><p>جلسة تركيز قصيرة، ثم استراحة بسيطة.</p><div class="focus-clock" id="focus-clock">'+formatClock(focusSeconds)+'</div><div class="focus-actions"><button class="btn-primary" data-action="focus-toggle">'+(focusRunning?"إيقاف مؤقت":"ابدأ التركيز")+'</button><button class="btn-secondary" data-action="focus-reset">إعادة</button></div></section><section class="tool-card wide-tool"><span class="tool-icon">Aa</span><h2>عداد النصوص</h2><textarea id="word-input" rows="4" placeholder="الصق أو اكتب النص هنا حتى تحسب كلماته وحروفه..."></textarea><div class="text-stats"><span>كلمات <b id="word-count">0</b></span><span>حروف <b id="char-count">0</b></span><span>حروف بدون مسافات <b id="char-no-space">0</b></span></div></section></div><p class="tools-disclaimer">الأدوات الحسابية والملاحظات والمؤقّت تعمل على جهازك. لا تُرسل محتوى الملاحظات إلى دَزّة.</p>');
+}
+function saveQuickNote() {
+  const input=$("#quick-note");
+  const text=String(input?.value||"").trim();
+  if(!text)return notice("اكتب ملاحظة قبل الحفظ.","error");
+  const notes=JSON.parse(storageGet("dazza-notes","[]")||"[]");
+  notes.unshift({text,date:new Date().toLocaleString("ar-IQ")});
+  storageSet("dazza-notes",JSON.stringify(notes.slice(0,30)));
+  renderTools();
+  notice("تم حفظ الملاحظة على هذا الجهاز.");
+}
+function deleteQuickNote(index) {
+  const notes=JSON.parse(storageGet("dazza-notes","[]")||"[]");
+  if(index<0||index>=notes.length)return;
+  notes.splice(index,1);storageSet("dazza-notes",JSON.stringify(notes));renderTools();
+}
+function toggleFocusTimer() {
+  focusRunning=!focusRunning;
+  if(focusRunning){
+    focusInterval=setInterval(()=>{
+      focusSeconds=Math.max(0,focusSeconds-1);
+      const clock=$("#focus-clock");if(clock)clock.textContent=formatClock(focusSeconds);
+      if(focusSeconds===0){clearInterval(focusInterval);focusInterval=null;focusRunning=false;notice("انتهت جلسة التركيز. خذ استراحة قصيرة.");const button=$('[data-action="focus-toggle"]');if(button)button.textContent="ابدأ التركيز";}
+    },1000);
+  } else if(focusInterval){clearInterval(focusInterval);focusInterval=null;}
+  const button=$('[data-action="focus-toggle"]');if(button)button.textContent=focusRunning?"إيقاف مؤقت":"متابعة التركيز";
+}
+function resetFocusTimer() {
+  if(focusInterval){clearInterval(focusInterval);focusInterval=null;}
+  focusRunning=false;focusSeconds=25*60;
+  const clock=$("#focus-clock");if(clock)clock.textContent=formatClock(focusSeconds);
+  const button=$('[data-action="focus-toggle"]');if(button)button.textContent="ابدأ التركيز";
+}
+
 async function renderExplore() {
   const [users, posts] = await Promise.all([searchUsers(searchTerm || ""), getExplorePosts()]);
   showContent('<div class="page-heading"><div><h1>استكشف</h1><p>اكتشف حسابات ومنشورات جديدة.</p></div></div><form id="search-form" class="search-form"><span>⌕</span><input name="query" value="' + esc(searchTerm) + '" placeholder="ابحث عن اسم مستخدم أو شخص أو منشور"><button class="btn-primary" type="submit">بحث</button></form><section class="search-results"><h2>الحسابات</h2>' + (users.map(userRow).join("") || '<p class="muted">ما لقينا حسابات مطابقة.</p>') + '</section><section class="explore-posts"><h2>منشورات المجتمع</h2><div class="explore-grid">' + posts.map(post => '<button class="explore-tile" data-action="open-post" data-id="' + post.id + '">' + (post.media_path ? (post.media_type === "video" ? '<video src="' + esc(publicUrl(post.media_path)) + '" muted></video>' : '<img loading="lazy" src="' + esc(publicUrl(post.media_path)) + '" alt="">') : '<span>' + esc(post.caption.slice(0,90)) + '</span>') + '</button>').join("") + '</div></section>');
@@ -943,6 +1218,14 @@ async function onChange(event) {
 function onInput(event) {
   if (event.target.id === "live-search") {
     searchTerm = event.target.value;
+  }
+  if (event.target.id === "word-input") {
+    const value=event.target.value;
+    const words=value.trim()?value.trim().split(/\s+/u).length:0;
+    const word=$("#word-count"),chars=$("#char-count"),compact=$("#char-no-space");
+    if(word)word.textContent=words;
+    if(chars)chars.textContent=value.length;
+    if(compact)compact.textContent=value.replace(/\s/g,"").length;
   }
 }
 
