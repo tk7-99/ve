@@ -4,9 +4,17 @@ import '../session.dart';
 void showFailure(BuildContext context, Session s, Object error) {
   final code = error is AppFailure ? error.code : '';
   final message = switch (code) {
-    'sms_not_configured' => s.text(
-      'خدمة رسائل التحقق لم تُفعّل بعد.',
-      'SMS verification is not configured.',
+    'email_not_configured' => s.text(
+      'خدمة البريد لم تُفعّل على الخادم بعد.',
+      'Email delivery is not configured on the server yet.',
+    ),
+    'email_send_failed' || 'email_provider_error' => s.text(
+      'تعذّر إرسال الرمز إلى بريدك. حاول لاحقاً.',
+      'The verification email could not be sent. Try again later.',
+    ),
+    'profile_required' => s.text(
+      'هذا حساب جديد. اكتب الاسم واسم المستخدم حتى نكمل التسجيل.',
+      'This is a new account. Enter your name and username to finish registration.',
     ),
     'invalid_or_expired_code' || 'challenge_expired' => s.text(
       'الرمز غير صحيح أو انتهت صلاحيته.',
@@ -16,7 +24,7 @@ void showFailure(BuildContext context, Session s, Object error) {
       'اسم المستخدم محجوز. اختر اسماً آخر واطلب رمزاً جديداً.',
       'Username is taken. Choose another and request a new code.',
     ),
-    'wait_before_resend' || 'too_many_attempts' || 'sms_rate_limited' => s.text(
+    'wait_before_resend' || 'too_many_attempts' => s.text(
       'انتظر قليلاً قبل المحاولة مرة ثانية.',
       'Please wait before trying again.',
     ),
