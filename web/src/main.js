@@ -78,6 +78,54 @@ function setBusy(value) {
   busy = value;
   root.classList.toggle("is-busy", value);
 }
+function resetSignedInState() {
+  session = null;
+  profile = null;
+  isAdmin = false;
+  activeConversation = null;
+  currentProfileId = null;
+  currentView = "feed";
+  if (liveChannel) {
+    supabase.removeChannel(liveChannel).catch(error => console.warn("Realtime cleanup:", error));
+    liveChannel = null;
+  }
+  if (focusInterval) { clearInterval(focusInterval); focusInterval = null; }
+  focusRunning = false;
+  focusSeconds = 25 * 60;
+  closeModal();
+}
+function updateNetworkBadge() {
+  const badge = $("#network-status");
+  if (!badge) return;
+  badge.hidden = navigator.onLine;
+  badge.textContent = navigator.onLine ? "" : "أنت غير متصل — بعض الميزات تحتاج إنترنت";
+}
+function openPasswordUpdate() {
+  openModal('<header class="modal-head"><h2>تعيين كلمة مرور جديدة</h2></header><form id="password-update-form"><label for="new-password">كلمة المرور الجديدة</label><input id="new-password" name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required placeholder="8 أحرف على الأقل"><label for="new-password-confirm">تأكيد كلمة المرور</label><input id="new-password-confirm" name="password_confirm" type="password" minlength="8" maxlength="72" autocomplete="new-password" required placeholder="أعد كتابة كلمة المرور"><button class="btn-primary full" type="submit">حفظ كلمة المرور</button></form>');
+}
+function openForgotPassword() {
+  openModal('<header class="modal-head"><h2>استعادة كلمة المرور</h2><button class="close-btn" data-action="close-modal">×</button></header><p class="muted">اكتب بريد حسابك، ونرسل لك رابط تعيين كلمة مرور جديدة.</p><form id="reset-request-form"><label for="reset-email">البريد الإلكتروني</label><input id="reset-email" name="email" type="email" autocomplete="email" required placeholder="name@example.com"><button class="btn-primary full" type="submit">إرسال رابط الاستعادة</button></form>');
+}
+async function signOutUser() {
+  const buttons = [...root.querySelectorAll('[data-action="logout"]')];
+  buttons.forEach(button => { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "جارٍ الخروج…"; });
+  try {
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) throw error;
+    resetSignedInState();
+    authView("login");
+    const banner = $("#auth-notice");
+    if (banner) { banner.textContent = "تم تسجيل الخروج من هذا الجهاز."; banner.hidden = false; }
+  } catch (error) {
+    console.error("Sign out failed:", error);
+    notice("تعذر تسجيل الخروج: " + (error.message || "خطأ غير معروف"), "error");
+    buttons.forEach(button => { button.disabled = false; button.textContent = button.dataset.oldText || "تسجيل الخروج"; });
+  }
+}
+function accountMenu() {
+  const avatar = avatarUrl(profile?.avatar_path);
+  openModal('<div class="account-menu"><div class="account-menu-user"><span class="avatar">' + (avatar ? '<img src="' + esc(avatar) + '" alt="">' : initials(profile?.display_name)) + '</span><div><strong>' + esc(profile?.display_name || "") + '</strong><small>@' + esc(profile?.username || "") + '</small></div></div><button data-action="my-profile">الملف الشخصي</button><button data-view="settings">الإعدادات والحساب</button><button data-action="toggle-theme">تغيير المظهر</button><button class="logout-menu" data-action="logout">تسجيل الخروج</button></div>');
+}
 function authView(mode = "login") {
   const signup = mode === "signup";
   root.innerHTML = '<main class="auth-screen"><section class="auth-brand"><div class="brand-symbol">د</div><h1>دَزّة</h1><p>مساحتك، ناسك، وحكاياتك.</p><div class="auth-art"><span>شارك لحظتك</span><span>تابع مجتمعك</span><span>خلك قريب</span></div></section><section class="auth-panel"><div class="auth-card"><div class="brand-mobile">دَزّة</div><p class="eyebrow">أهلاً بيك بمجتمع دَزّة</p><h2>' + (signup ? "أنشئ حسابك" : "سجّل دخولك") + '</h2><p class="muted">' + (signup ? "ابدأ شارك صورك وقصصك وتواصل ويا الناس." : "ادخل لحسابك وشوف جديد مجتمعك.") + '</p><div id="auth-notice" class="notice" hidden></div><form id="auth-form" data-mode="' + mode + '">' +
@@ -193,6 +241,9 @@ async function navigate(view, param) {
     if (view === "feed") await renderFeed();
     else if (view === "explore") await renderExplore();
     else if (view === "reels") await renderReels();
+    else if (view === "games") await renderGames();
+    else if (view === "tools") await renderTools();
+    else if (view === "settings") await renderSettings();
     else if (view === "profile") await renderProfile(currentProfileId || session.user.id);
     else if (view === "notifications") await renderNotifications();
     else if (view === "saved") await renderSaved();
@@ -615,9 +666,26 @@ async function onClick(event) {
   }
   if (!action) return;
   if (action === "switch-auth") return authView(node.dataset.mode);
-  if (action === "logout") {
-    if (liveChannel) await supabase.removeChannel(liveChannel);
-    await supabase.auth.signOut();
+  if (action === "logout") return signOutUser();
+  if (action === "account-menu") return accountMenu();
+  if (action === "forgot-password") return openForgotPassword();
+  if (action === "toggle-theme") {
+    const next = storageGet("dazza-theme", "midnight") === "midnight" ? "daylight" : "midnight";
+    storageSet("dazza-theme", next); applyTheme(); notice(next === "daylight" ? "تم تفعيل المظهر النهاري." : "تم تفعيل المظهر الليلي.");
+    return;
+  }
+  if (action === "toggle-password") {
+    const input = $("#password");
+    if (input) { input.type = input.type === "password" ? "text" : "password"; node.setAttribute("aria-label", input.type === "password" ? "إظهار كلمة المرور" : "إخفاء كلمة المرور"); }
+    return;
+  }
+  if (action === "install-app") {
+    if (deferredInstallPrompt) {
+      deferredInstallPrompt.prompt();
+      const result = await deferredInstallPrompt.userChoice;
+      notice(result?.outcome === "accepted" ? "تم بدء تثبيت دَزّة." : "يمكنك تثبيت دَزّة لاحقاً من قائمة المتصفح.");
+      deferredInstallPrompt = null;
+    } else notice("من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية» لتثبيت دَزّة.");
     return;
   }
   if (action === "new-post") return postModal();
@@ -695,6 +763,24 @@ async function onClick(event) {
   if (action === "open-dm") { activeConversation = node.dataset.id; return renderMessages(); }
   if (action === "message-user") return startDirectMessage(node.dataset.id);
   if (action === "open-post") return renderPostModal(node.dataset.id);
+  if (action === "launch-game") { activeGame = node.dataset.game; gameState = null; return renderGame(activeGame); }
+  if (action === "games-home") { activeGame = "hub"; return renderGames(); }
+  if (action === "game-reset") return resetGame();
+  if (action === "memory-card") return flipMemoryCard(Number(node.dataset.index));
+  if (action === "ttt-cell") return playTicTacToe(Number(node.dataset.index));
+  if (action === "rps-choice") return playRps(node.dataset.choice);
+  if (action === "quiz-answer") return answerQuiz(Number(node.dataset.index));
+  if (action === "quiz-next") return nextQuizQuestion();
+  if (action === "game-move") return move2048(node.dataset.direction);
+  if (action === "focus-toggle") return toggleFocusTimer();
+  if (action === "focus-reset") return resetFocusTimer();
+  if (action === "save-note") return saveQuickNote();
+  if (action === "delete-note") return deleteQuickNote();
+  if (action === "copy-tool-result") {
+    const value = $("#tool-result")?.textContent || "";
+    try { await navigator.clipboard.writeText(value); notice("تم النسخ."); } catch { notice("تعذر النسخ من المتصفح.", "error"); }
+    return;
+  }
 }
 async function onSubmit(event) {
   const form = event.target;
