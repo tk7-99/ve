@@ -26,6 +26,13 @@ class Providers:
             raise HTTPException(502, "sms_provider_error")
         return response.json()
 
+    async def send_email(self, email, code):
+        response = await self.http.post('https://api.resend.com/emails',
+            headers={'Authorization': 'Bearer ' + self.s.resend_api_key.get_secret_value(), 'Content-Type': 'application/json'},
+            json={'from': self.s.resend_from, 'to': [email], 'subject': 'رمز الدخول إلى دَزّة',
+                  'text': f'رمز التحقق الخاص بك هو: {code}\\nصلاحية الرمز خمس دقائق. لا تشاركه مع أي شخص.'})
+        if response.is_error: raise HTTPException(502, 'email_provider_error')
+
     async def send(self, phone):
         await self.twilio('Verifications', {'To': phone, 'Channel': 'sms'})
 
