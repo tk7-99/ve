@@ -210,7 +210,7 @@ async function enter(nextSession) {
     throw new Error(error?.message || "حسابك لم يكتمل إعداده بعد. جرّب مرة ثانية.");
   }
   profile = data;
-  configureSocialWorld({ supabase, user: session.user, profile, showContent, notify, navigate });
+  configureSocialWorld({ supabase, user: session.user, profile, showContent, notify: notice, navigate });
   const admin = await supabase.from("app_admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
   isAdmin = !!admin.data;
   shell();
@@ -1333,7 +1333,7 @@ async function onSubmit(event) {
         await supabase.storage.from(BUCKET).remove([profile.avatar_path]);
       }
       profile = updated;
-      configureSocialWorld({ supabase, user: session.user, profile, showContent, notify, navigate });
+      configureSocialWorld({ supabase, user: session.user, profile, showContent, notify: notice, navigate });
       closeModal(); notice("تم تحديث ملفك الشخصي."); shell(); await loadSuggestions(); await navigate("profile", session.user.id);
       setBusy(false); return;
     }
