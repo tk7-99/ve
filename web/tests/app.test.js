@@ -176,3 +176,10 @@ test("server-side room guards cap voice rooms and normalize timestamps", async (
   assert.ok(migration.includes("pg_advisory_xact_lock"));
   assert.ok(migration.includes("interval '10 seconds'"));
 });
+
+
+
+test("social world receives the defined notification callback during setup", () => {
+  assert.equal(source.split("showContent, notify: notice, navigate").length - 1, 2);
+  assert.equal(source.split("showContent, notify, navigate").length - 1, 0);
+});
