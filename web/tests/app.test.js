@@ -176,3 +176,13 @@ test("server-side room guards cap voice rooms and normalize timestamps", async (
   assert.ok(migration.includes("pg_advisory_xact_lock"));
   assert.ok(migration.includes("interval '10 seconds'"));
 });
+
+
+test("social world receives the defined notification callback during setup", () => {
+  const calls = [...source.matchAll(/configureSocialWorld\\(\\{([^}]+)\\}\\)/g)];
+  assert.equal(calls.length, 2, "expected login and profile setup calls");
+  for (const call of calls) {
+    assert.match(call[1], /\\bnotify:\\s*notice\\b/);
+    assert.doesNotMatch(call[1], /(^|,)\\s*notify\\s*(,|$)/);
+  }
+});
