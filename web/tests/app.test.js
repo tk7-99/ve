@@ -178,11 +178,8 @@ test("server-side room guards cap voice rooms and normalize timestamps", async (
 });
 
 
+
 test("social world receives the defined notification callback during setup", () => {
-  const calls = [...source.matchAll(/configureSocialWorld\\(\\{([^}]+)\\}\\)/g)];
-  assert.equal(calls.length, 2, "expected login and profile setup calls");
-  for (const call of calls) {
-    assert.match(call[1], /\\bnotify:\\s*notice\\b/);
-    assert.doesNotMatch(call[1], /(^|,)\\s*notify\\s*(,|$)/);
-  }
+  assert.equal(source.split("showContent, notify: notice, navigate").length - 1, 2);
+  assert.equal(source.split("showContent, notify, navigate").length - 1, 0);
 });
