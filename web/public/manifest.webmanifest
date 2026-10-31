@@ -1,0 +1,28 @@
+{
+  "id": "/",
+  "name": "دَزّة | DAZZA",
+  "short_name": "دَزّة",
+  "description": "مجتمعك الاجتماعي العراقي، ألعابك وأدواتك في مكان واحد.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080b13",
+  "theme_color": "#080b13",
+  "categories": [
+    "social",
+    "entertainment",
+    "games",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/dazza-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

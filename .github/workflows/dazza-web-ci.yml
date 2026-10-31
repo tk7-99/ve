@@ -1,0 +1,37 @@
+name: DAZZA Web Quality
+
+on:
+  push:
+    branches: [dazza-cosmos-v2]
+    paths:
+      - "web/**"
+      - ".github/workflows/dazza-web-ci.yml"
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/dazza-web-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned dependencies
+        run: npm install --ignore-scripts
+      - name: Run regression tests
+        run: npm test
+      - name: Build production bundle
+        run: npm run build
